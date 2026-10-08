@@ -1,0 +1,21 @@
+# Build output
+build/
+out/
+
+# CMake (per-user files)
+CMakeUserPresets.json
+compile_commands.json
+
+# IDE / OS
+.vscode/
+.idea/
+.antigravity/
+.DS_Store
+
+# Game saves
+*.sav
+
+# ROMs: never commit commercial ROMs. Only test ROMs under tests/roms/ are allowed.
+*.gb
+*.gbc
+!tests/roms/**/*.gb

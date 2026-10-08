@@ -11,6 +11,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(googletest)
 
 add_executable(unit_tests
+  unit/registers_test.cpp
   unit/smoke_test.cpp
 )
 

@@ -4,6 +4,7 @@ add_library(core STATIC
   cpu.cpp
   gameboy.cpp
   serial.cpp
+  timer.cpp
 )
 add_library(gb::core ALIAS core)
 

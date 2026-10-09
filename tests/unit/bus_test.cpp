@@ -7,6 +7,7 @@
 
 #include "core/interrupts.h"
 #include "core/serial.h"
+#include "core/timer.h"
 #include "test_rom.h"
 
 namespace {
@@ -176,6 +177,19 @@ TEST(Bus, SerialTransferIsCapturedAndRaisesItsInterrupt) {
     EXPECT_FALSE(bus.interrupt_requested(Interrupt::Serial));
     bus.tick(4);
     EXPECT_TRUE(bus.interrupt_requested(Interrupt::Serial));
+}
+
+TEST(Bus, TimerOverflowRaisesTheTimerInterrupt) {
+    Bus bus;
+    bus.write8(Bus::kInterruptFlag, 0x00);
+    bus.write8(core::Timer::kDiv, 0x00);
+    bus.write8(core::Timer::kTima, 0xFF);
+    bus.write8(core::Timer::kTac, 0x05);  // enabled, one count every 16 ticks
+
+    bus.tick(16);
+    EXPECT_FALSE(bus.interrupt_requested(Interrupt::Timer));
+    bus.tick(4);
+    EXPECT_TRUE(bus.interrupt_requested(Interrupt::Timer));
 }
 
 }  // namespace

@@ -16,6 +16,7 @@ add_executable(unit_tests
   unit/registers_test.cpp
   unit/serial_test.cpp
   unit/smoke_test.cpp
+  unit/timer_test.cpp
 )
 
 target_include_directories(unit_tests PRIVATE unit)

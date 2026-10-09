@@ -9,6 +9,7 @@
 
 #include "core/interrupts.h"
 #include "core/serial.h"
+#include "core/timer.h"
 
 namespace core {
 
@@ -18,7 +19,7 @@ namespace core {
 //
 //   0x0000-0x7FFF  cartridge ROM (read-only)
 //   0x8000-0xFEFF  RAM (video, cartridge, work RAM and sprite table: split up in M2/M3)
-//   0xFF00-0xFF7F  I/O registers (serial and interrupt flags so far)
+//   0xFF00-0xFF7F  I/O registers (serial, timer and interrupt flags so far)
 //   0xFF80-0xFFFE  high RAM
 //   0xFFFF         interrupt enable register (IE)
 class Bus {
@@ -59,6 +60,7 @@ private:
     std::vector<std::uint8_t> rom_;
     std::array<std::uint8_t, kAddressSpace> memory_{};
     Serial serial_;
+    Timer timer_;
     // The boot ROM leaves the VBlank request set.
     std::uint8_t interrupt_flag_ = 0x01;
     std::uint8_t interrupt_enable_ = 0x00;

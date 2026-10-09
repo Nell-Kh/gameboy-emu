@@ -1,5 +1,6 @@
 # The emulator core. No SDL, no I/O: it must build and test on its own.
 add_library(core STATIC
+  bus.cpp
   gameboy.cpp
 )
 add_library(gb::core ALIAS core)

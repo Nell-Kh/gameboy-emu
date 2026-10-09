@@ -13,6 +13,7 @@ FetchContent_MakeAvailable(googletest)
 add_executable(unit_tests
   unit/bus_test.cpp
   unit/cpu_alu_test.cpp
+  unit/cpu_bits_test.cpp
   unit/cpu_opcode_table_test.cpp
   unit/cpu_test.cpp
   unit/registers_test.cpp

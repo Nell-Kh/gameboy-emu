@@ -19,8 +19,11 @@ namespace core {
 // and is routed to whatever lives at that address.
 //
 //   0x0000-0x7FFF  cartridge ROM (read-only)
-//   0x8000-0xFEFF  RAM (video, cartridge, work RAM and sprite table: split up in M2/M3)
-//   0xFF00-0xFF7F  I/O registers (serial, timer, LCDC, LY and interrupt flags so far)
+//   0x8000-0xDFFF  RAM: video, cartridge and work RAM (plain memory for now)
+//   0xE000-0xFDFF  echo RAM, a mirror of 0xC000-0xDDFF
+//   0xFE00-0xFE9F  sprite table (OAM, plain memory for now)
+//   0xFEA0-0xFEFF  not connected: reads 0x00, ignores writes
+//   0xFF00-0xFF7F  I/O registers; addresses with no register read 0xFF
 //   0xFF80-0xFFFE  high RAM
 //   0xFFFF         interrupt enable register (IE)
 class Bus {

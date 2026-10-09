@@ -87,6 +87,101 @@ TEST(Bus, RomLongerThanTheRegionDoesNotLeakIntoRam) {
     EXPECT_EQ(bus.read8(0x8000), 0x00);
 }
 
+TEST(Bus, EchoRamMirrorsWorkRamBothWays) {
+    Bus bus;
+    bus.write8(0xC123, 0x42);
+    EXPECT_EQ(bus.read8(0xE123), 0x42);
+    bus.write8(0xE456, 0x99);
+    EXPECT_EQ(bus.read8(0xC456), 0x99);
+}
+
+TEST(Bus, EchoRamCoversExactlyE000ToFdff) {
+    Bus bus;
+    bus.write8(0xC000, 0x11);
+    bus.write8(0xDDFF, 0x22);
+    EXPECT_EQ(bus.read8(0xE000), 0x11);
+    EXPECT_EQ(bus.read8(0xFDFF), 0x22);
+
+    // 0xFE00 is the sprite table, not a mirror of 0xDE00.
+    bus.write8(0xDE00, 0x33);
+    EXPECT_EQ(bus.read8(0xFE00), 0x00);
+    bus.write8(0xFE00, 0x44);
+    EXPECT_EQ(bus.read8(0xDE00), 0x33);
+}
+
+TEST(Bus, UnusableRegionReadsZeroAndIgnoresWrites) {
+    Bus bus;
+    for (std::uint32_t address = 0xFEA0; address <= 0xFEFF; ++address) {
+        const auto a = static_cast<std::uint16_t>(address);
+        bus.write8(a, 0x5A);
+        EXPECT_EQ(bus.read8(a), 0x00) << "address " << address;
+    }
+}
+
+TEST(Bus, SpriteTableIsWritableUpToFe9f) {
+    Bus bus;
+    bus.write8(0xFE9F, 0x77);
+    EXPECT_EQ(bus.read8(0xFE9F), 0x77);
+}
+
+TEST(Bus, IoAddressesWithNoRegisterReadFFAndIgnoreWrites) {
+    Bus bus;
+    for (const std::uint16_t address :
+         {0xFF03, 0xFF08, 0xFF0E, 0xFF15, 0xFF1F, 0xFF27, 0xFF2F, 0xFF4C, 0xFF50, 0xFF7F}) {
+        bus.write8(address, 0x00);
+        EXPECT_EQ(bus.read8(address), 0xFF) << "address " << address;
+    }
+}
+
+TEST(Bus, MappedNeighboursOfUnmappedIoStillWork) {
+    Bus bus;
+    // Wave RAM (0xFF30-0xFF3F) is real memory between two unmapped ranges.
+    bus.write8(0xFF30, 0x12);
+    bus.write8(0xFF3F, 0x34);
+    EXPECT_EQ(bus.read8(0xFF30), 0x12);
+    EXPECT_EQ(bus.read8(0xFF3F), 0x34);
+    // High RAM starts right after the last unmapped I/O address.
+    bus.write8(0xFF80, 0x56);
+    EXPECT_EQ(bus.read8(0xFF80), 0x56);
+}
+
+TEST(Bus, UnemulatedRegistersReadTheirMissingAndWriteOnlyBitsAsOne) {
+    Bus bus;
+    struct Case {
+        std::uint16_t address;
+        std::uint8_t ones;
+    };
+    for (const Case c :
+         {Case{0xFF10, 0x80}, Case{0xFF11, 0x3F}, Case{0xFF13, 0xFF}, Case{0xFF14, 0xBF},
+          Case{0xFF1A, 0x7F}, Case{0xFF1C, 0x9F}, Case{0xFF20, 0xFF}, Case{0xFF23, 0xBF},
+          Case{0xFF26, 0x70}, Case{0xFF41, 0x80}}) {
+        bus.write8(c.address, 0x00);
+        EXPECT_EQ(bus.read8(c.address), c.ones) << "address " << c.address;
+        bus.write8(c.address, 0xFF);
+        EXPECT_EQ(bus.read8(c.address), 0xFF) << "address " << c.address;
+    }
+}
+
+TEST(Bus, FullyReadableUnemulatedRegistersReadBackAsWritten) {
+    Bus bus;
+    for (const std::uint16_t address : {0xFF12, 0xFF24, 0xFF42, 0xFF47}) {
+        bus.write8(address, 0x00);
+        EXPECT_EQ(bus.read8(address), 0x00) << "address " << address;
+        bus.write8(address, 0xA5);
+        EXPECT_EQ(bus.read8(address), 0xA5) << "address " << address;
+    }
+}
+
+TEST(Bus, JoypadReadsNoButtonsPressedAndKeepsTheSelectBits) {
+    Bus bus;
+    bus.write8(0xFF00, 0x00);
+    EXPECT_EQ(bus.read8(0xFF00), 0xCF);
+    bus.write8(0xFF00, 0x20);
+    EXPECT_EQ(bus.read8(0xFF00), 0xEF);
+    bus.write8(0xFF00, 0x10);
+    EXPECT_EQ(bus.read8(0xFF00), 0xDF);
+}
+
 TEST(Bus, TickAccumulatesCycles) {
     Bus bus;
     EXPECT_EQ(bus.cycles(), 0U);

@@ -154,4 +154,12 @@ INSTANTIATE_TEST_SUITE_P(Interrupts, MooneyeRom,
                              return std::string(info.param.test_name);
                          });
 
+INSTANTIATE_TEST_SUITE_P(Bits, MooneyeRom,
+                         testing::Values(Rom{"unused_hwio", "acceptance/bits/unused_hwio-GS.gb"},
+                                         Rom{"mem_oam", "acceptance/bits/mem_oam.gb"},
+                                         Rom{"reg_f", "acceptance/bits/reg_f.gb"}),
+                         [](const testing::TestParamInfo<Rom>& info) {
+                             return std::string(info.param.test_name);
+                         });
+
 }  // namespace

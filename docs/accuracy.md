@@ -48,6 +48,9 @@ Blargg's timing ROMs, from the same repository:
 | `intr_timing` | the duration of an interrupt dispatch | Passed |
 | `if_ie_registers` | IF and IE behaviour, including the unused bits | Passed |
 | `interrupts/ie_push` | dispatch cancelled when pushing PC overwrites IE | Passed |
+| `bits/unused_hwio-GS` | unused and write-only I/O bits read as 1; unmapped I/O reads `0xFF` | Passed |
+| `bits/mem_oam` | the sprite table (OAM) is readable and writable | Passed |
+| `bits/reg_f` | the low four bits of F are always 0 | Passed |
 
 To reproduce one by hand:
 
@@ -114,12 +117,17 @@ that is a bug in this document.
 
 **Memory and I/O**
 
-- **Memory map:** `0x8000-0xFEFF` is plain RAM. Echo RAM does not mirror, the unusable region
-  `0xFEA0-0xFEFF` is writable, and there are no video-RAM or OAM access restrictions.
+- **Memory map:** echo RAM (`0xE000-0xFDFF`) mirrors work RAM and the unusable region
+  (`0xFEA0-0xFEFF`) reads `0x00` and ignores writes. Video RAM, cartridge RAM and OAM are plain
+  memory: there are no PPU access restrictions, and on hardware the unusable region also reads
+  differently while the PPU is scanning OAM.
 - **OAM DMA** (`0xFF46`) is not implemented. Writing to it does nothing but store the byte.
-- **Cartridges:** only the first 32 KiB of a ROM are visible. There is no mapper, no cartridge
-  RAM, and writes to the ROM region are ignored.
-- **I/O registers:** only SB, SC, DIV, TIMA, TMA, TAC, LCDC, LY, IF and IE behave like hardware,
-  including their unused bits reading as 1. Every other register, the joypad at `0xFF00` included, is plain
-  memory that starts at 0, not at its post-boot value, and has no write-only or unused bits.
-- **Boot ROM:** not run. The CPU registers, DIV and IF start at their post-boot values.
+- **Cartridges:** only the first 32 KiB of a ROM are visible. There is no mapper, writes to the
+  ROM region are ignored, and `0xA000-0xBFFF` is plain RAM whatever the cartridge header says.
+- **I/O registers:** SB, SC, DIV, TIMA, TMA, TAC, LCDC, LY, IF and IE are emulated. Addresses
+  with no register read `0xFF`. Every other register (joypad, sound, the rest of the PPU) is plain
+  memory whose unused and write-only bits read as 1. Those registers start at 0, not at their
+  post-boot values, and have no side effects: the joypad always reads "no buttons pressed", STAT
+  does not report the PPU mode, and switching sound off in NR52 does not block or clear the other
+  sound registers.
+- **Boot ROM:** not run. The CPU registers, DIV, IF and LCDC start at their post-boot values.

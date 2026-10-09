@@ -17,6 +17,7 @@ add_executable(unit_tests
   unit/smoke_test.cpp
 )
 
+target_include_directories(unit_tests PRIVATE unit)
 target_link_libraries(unit_tests PRIVATE gb::core GTest::gtest_main gb_warnings)
 
 # Registers every TEST(...) with CTest, so `ctest` lists them one by one.

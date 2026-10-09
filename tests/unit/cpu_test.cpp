@@ -2,18 +2,16 @@
 
 #include <gtest/gtest.h>
 
-#include <array>
 #include <cstdint>
 
 #include "core/bus.h"
+#include "test_rom.h"
 
 namespace {
 
 using core::Bus;
 using core::Cpu;
-
-// Cartridge code starts at 0x0100, which is where PC points after boot.
-constexpr std::uint16_t kEntry = 0x0100;
+using test::kEntry;
 
 TEST(Cpu, StartsInPostBootState) {
     Bus bus;
@@ -27,8 +25,7 @@ TEST(Cpu, StartsInPostBootState) {
 TEST(Cpu, NopTakesOneMachineCycle) {
     Bus bus;
     Cpu cpu(bus);
-    const std::array<std::uint8_t, 1> program = {0x00};
-    ASSERT_TRUE(bus.load(program, kEntry));
+    bus.load_rom(test::make_rom({0x00}));
 
     EXPECT_EQ(cpu.step(), 4U);
     EXPECT_EQ(cpu.registers().pc, kEntry + 1);
@@ -38,8 +35,7 @@ TEST(Cpu, NopTakesOneMachineCycle) {
 TEST(Cpu, LoadImmediateIntoA) {
     Bus bus;
     Cpu cpu(bus);
-    const std::array<std::uint8_t, 2> program = {0x3E, 0x42};
-    ASSERT_TRUE(bus.load(program, kEntry));
+    bus.load_rom(test::make_rom({0x3E, 0x42}));
 
     EXPECT_EQ(cpu.step(), 8U);
     EXPECT_EQ(cpu.registers().a, 0x42);
@@ -49,8 +45,7 @@ TEST(Cpu, LoadImmediateIntoA) {
 TEST(Cpu, StoreAAtAddressInHl) {
     Bus bus;
     Cpu cpu(bus);
-    const std::array<std::uint8_t, 1> program = {0x77};
-    ASSERT_TRUE(bus.load(program, kEntry));
+    bus.load_rom(test::make_rom({0x77}));
     cpu.registers().a = 0x5A;
     cpu.registers().set_hl(0xC123);
 
@@ -62,8 +57,7 @@ TEST(Cpu, StoreAAtAddressInHl) {
 TEST(Cpu, JumpReadsItsTargetLowByteFirst) {
     Bus bus;
     Cpu cpu(bus);
-    const std::array<std::uint8_t, 3> program = {0xC3, 0x34, 0x12};
-    ASSERT_TRUE(bus.load(program, kEntry));
+    bus.load_rom(test::make_rom({0xC3, 0x34, 0x12}));
 
     EXPECT_EQ(cpu.step(), 16U);
     EXPECT_EQ(cpu.registers().pc, 0x1234);
@@ -73,8 +67,7 @@ TEST(Cpu, StepReturnsExactlyTheTimeItPutOnTheBus) {
     Bus bus;
     Cpu cpu(bus);
     // LD A, 0x07 ; LD (HL), A ; JP 0x0100
-    const std::array<std::uint8_t, 6> program = {0x3E, 0x07, 0x77, 0xC3, 0x00, 0x01};
-    ASSERT_TRUE(bus.load(program, kEntry));
+    bus.load_rom(test::make_rom({0x3E, 0x07, 0x77, 0xC3, 0x00, 0x01}));
     cpu.registers().set_hl(0xC000);
 
     std::uint64_t total = 0;
@@ -92,8 +85,7 @@ TEST(Cpu, UndefinedOpcodeLocksTheCpu) {
     Bus bus;
     Cpu cpu(bus);
     // 0xD3 is one of the 11 opcodes that do not exist on the SM83.
-    const std::array<std::uint8_t, 2> program = {0xD3, 0x00};
-    ASSERT_TRUE(bus.load(program, kEntry));
+    bus.load_rom(test::make_rom({0xD3, 0x00}));
 
     EXPECT_EQ(cpu.step(), 4U);
     EXPECT_TRUE(cpu.locked());
@@ -102,8 +94,7 @@ TEST(Cpu, UndefinedOpcodeLocksTheCpu) {
 TEST(Cpu, LockedCpuBurnsTimeButDoesNothingElse) {
     Bus bus;
     Cpu cpu(bus);
-    const std::array<std::uint8_t, 2> program = {0xD3, 0x3E};
-    ASSERT_TRUE(bus.load(program, kEntry));
+    bus.load_rom(test::make_rom({0xD3, 0x3E}));
     static_cast<void>(cpu.step());
     const std::uint16_t pc_when_locked = cpu.registers().pc;
 

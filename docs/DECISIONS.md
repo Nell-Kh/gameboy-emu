@@ -76,3 +76,30 @@ record that supersedes the old one, not by editing history.
   independent reference, and `cpu_opcode_table_test.cpp` checks every instruction's duration,
   length and untouched flags against it, for all 16 flag states. Building needs Python 3 only to
   re-generate or to run that one check.
+
+## ADR-007: Test ROMs are downloaded at a pinned commit, not committed
+
+- **Context:** Correctness is measured by Blargg's test ROMs. The original plan was to keep them
+  under `tests/roms/` with their licences. The ROMs are freely distributed and mirrored at
+  [retrio/gb-test-roms](https://github.com/retrio/gb-test-roms), but that repository carries no
+  licence file, so there is no written permission to redistribute them from this one.
+- **Decision:** CMake fetches `retrio/gb-test-roms` at commit `c240dd7` when tests are configured,
+  the same way it fetches GoogleTest. `tests/test_roms.cpp` runs each ROM on the whole machine and
+  passes when the ROM prints "Passed" over the serial port. `-DGB_FETCH_TEST_ROMS=OFF` builds and
+  runs everything else without them.
+- **Consequences:** No third-party binary lives in this repository, and the pinned commit keeps
+  the tests reproducible. The first configure needs network access (it already did, for
+  GoogleTest). If the mirror ever disappears the ROM tests cannot be fetched until the URL is
+  changed; the unit tests do not depend on it.
+
+## ADR-008: M1 runs the eleven individual cpu_instrs ROMs; the combined ROM waits for MBC1
+
+- **Context:** `cpu_instrs.gb` is one 64 KiB ROM containing eleven sub-tests, and it needs an MBC1
+  mapper to switch banks. The same eleven sub-tests also ship as separate 32 KiB ROMs that need no
+  mapper. Cartridge mappers are M2 work.
+- **Decision:** M1's exit test is the eleven individual ROMs, each a separate CTest test. The
+  combined ROM is added in M2, when MBC1 exists.
+- **Consequences:** The instructions tested are identical, and a failure names the instruction
+  group directly. What is not yet exercised is bank switching, which M1 does not claim.
+  The timer and the tick-before-access order chosen in ADR-005 are exercised here by
+  `02-interrupts`, which fails without a working timer interrupt.

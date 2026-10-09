@@ -16,6 +16,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(GB_SANITIZE "Build with AddressSanitizer + UndefinedBehaviorSanitizer" OFF)
 option(GB_BUILD_TESTS "Build the unit tests" ON)
+option(GB_FETCH_TEST_ROMS "Download the public test ROMs and run them as tests" ON)
 
 # Warnings as errors, for our own targets only.
 # Our targets link gb_warnings; third-party code (GoogleTest) does not,

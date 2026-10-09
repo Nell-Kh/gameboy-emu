@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <ostream>
 #include <string>
 
 namespace {
@@ -65,6 +66,11 @@ struct Rate {
     std::uint8_t tac_bits;
     std::uint32_t ticks_per_count;
 };
+
+// Tells GoogleTest how to print a case in the test listing.
+void PrintTo(const Rate& rate, std::ostream* os) {
+    *os << "one count every " << rate.ticks_per_count << " ticks";
+}
 
 class TimerRate : public testing::TestWithParam<Rate> {};
 

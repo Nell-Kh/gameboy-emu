@@ -19,6 +19,7 @@ add_executable(unit_tests
   unit/cpu_load_test.cpp
   unit/cpu_opcode_table_test.cpp
   unit/cpu_test.cpp
+  unit/gameboy_test.cpp
   unit/registers_test.cpp
   unit/serial_test.cpp
   unit/smoke_test.cpp
@@ -40,3 +41,36 @@ if(Python3_Interpreter_FOUND)
     COMMAND Python3::Interpreter ${PROJECT_SOURCE_DIR}/tools/gen_opcodes.py --check
   )
 endif()
+
+# --- Test ROMs -------------------------------------------------------------
+# Blargg's hardware test ROMs are the reference for CPU correctness. They are
+# downloaded at a pinned commit instead of being committed here (ADR-007).
+# Configure with -DGB_FETCH_TEST_ROMS=OFF to build without network access.
+if(GB_FETCH_TEST_ROMS)
+  FetchContent_Declare(
+    gb_test_roms
+    GIT_REPOSITORY https://github.com/retrio/gb-test-roms.git
+    GIT_TAG c240dd7d700e5c0b00a7bbba52b53e4ee67b5f15
+  )
+  FetchContent_MakeAvailable(gb_test_roms)
+
+  add_executable(rom_tests
+    test_roms.cpp
+  )
+  target_compile_definitions(rom_tests PRIVATE GB_TEST_ROM_DIR="${gb_test_roms_SOURCE_DIR}")
+  target_link_libraries(rom_tests PRIVATE gb::core GTest::gtest_main gb_warnings)
+  gtest_discover_tests(rom_tests)
+
+  # The command-line frontend, end to end: exit status 0 means the ROM passed.
+  add_test(
+    NAME App.HeadlessRunsATestRom
+    COMMAND gameboy-emu --headless "${gb_test_roms_SOURCE_DIR}/cpu_instrs/individual/06-ld r,r.gb"
+  )
+endif()
+
+add_test(NAME App.PrintsUsageWithoutArguments COMMAND gameboy-emu)
+set_tests_properties(App.PrintsUsageWithoutArguments PROPERTIES
+  PASS_REGULAR_EXPRESSION "Usage: gameboy-emu"
+)
+add_test(NAME App.RejectsUnknownOptions COMMAND gameboy-emu --no-such-option)
+set_tests_properties(App.RejectsUnknownOptions PROPERTIES WILL_FAIL TRUE)

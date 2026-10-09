@@ -154,6 +154,47 @@ INSTANTIATE_TEST_SUITE_P(Interrupts, MooneyeRom,
                              return std::string(info.param.test_name);
                          });
 
+INSTANTIATE_TEST_SUITE_P(OamDma, MooneyeRom,
+                         testing::Values(Rom{"basic", "acceptance/oam_dma/basic.gb"},
+                                         Rom{"reg_read", "acceptance/oam_dma/reg_read.gb"},
+                                         Rom{"sources", "acceptance/oam_dma/sources-GS.gb"},
+                                         Rom{"oam_dma_restart", "acceptance/oam_dma_restart.gb"},
+                                         Rom{"oam_dma_start", "acceptance/oam_dma_start.gb"},
+                                         Rom{"oam_dma_timing", "acceptance/oam_dma_timing.gb"}),
+                         [](const testing::TestParamInfo<Rom>& info) {
+                             return std::string(info.param.test_name);
+                         });
+
+// These measure when each memory access of an instruction happens, using an
+// OAM DMA as the stopwatch.
+INSTANTIATE_TEST_SUITE_P(
+    InstructionTiming, MooneyeRom,
+    testing::Values(Rom{"add_sp_e_timing", "acceptance/add_sp_e_timing.gb"},
+                    Rom{"call_timing", "acceptance/call_timing.gb"},
+                    Rom{"call_timing2", "acceptance/call_timing2.gb"},
+                    Rom{"call_cc_timing", "acceptance/call_cc_timing.gb"},
+                    Rom{"call_cc_timing2", "acceptance/call_cc_timing2.gb"},
+                    Rom{"div_timing", "acceptance/div_timing.gb"},
+                    Rom{"halt_ime1_timing", "acceptance/halt_ime1_timing.gb"},
+                    Rom{"jp_timing", "acceptance/jp_timing.gb"},
+                    Rom{"jp_cc_timing", "acceptance/jp_cc_timing.gb"},
+                    Rom{"ld_hl_sp_e_timing", "acceptance/ld_hl_sp_e_timing.gb"},
+                    Rom{"pop_timing", "acceptance/pop_timing.gb"},
+                    Rom{"push_timing", "acceptance/push_timing.gb"},
+                    Rom{"ret_timing", "acceptance/ret_timing.gb"},
+                    Rom{"ret_cc_timing", "acceptance/ret_cc_timing.gb"},
+                    Rom{"reti_timing", "acceptance/reti_timing.gb"},
+                    Rom{"reti_intr_timing", "acceptance/reti_intr_timing.gb"},
+                    Rom{"rst_timing", "acceptance/rst_timing.gb"}),
+    [](const testing::TestParamInfo<Rom>& info) { return std::string(info.param.test_name); });
+
+INSTANTIATE_TEST_SUITE_P(Cpu, MooneyeRom,
+                         testing::Values(Rom{"boot_regs_dmgABC", "acceptance/boot_regs-dmgABC.gb"},
+                                         Rom{"daa", "acceptance/instr/daa.gb"}),
+                         [](const testing::TestParamInfo<Rom>& info) {
+                             return std::string(info.param.test_name);
+                         });
+
 INSTANTIATE_TEST_SUITE_P(Bits, MooneyeRom,
                          testing::Values(Rom{"unused_hwio", "acceptance/bits/unused_hwio-GS.gb"},
                                          Rom{"mem_oam", "acceptance/bits/mem_oam.gb"},

@@ -3,6 +3,7 @@ add_library(core STATIC
   bus.cpp
   cpu.cpp
   gameboy.cpp
+  oam_dma.cpp
   opcodes.gen.cpp
   ppu.cpp
   serial.cpp

@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "core/interrupts.h"
+#include "core/oam_dma.h"
 #include "core/ppu.h"
 #include "core/serial.h"
 #include "core/timer.h"
@@ -21,7 +22,7 @@ namespace core {
 //   0x0000-0x7FFF  cartridge ROM (read-only)
 //   0x8000-0xDFFF  RAM: video, cartridge and work RAM (plain memory for now)
 //   0xE000-0xFDFF  echo RAM, a mirror of 0xC000-0xDDFF
-//   0xFE00-0xFE9F  sprite table (OAM, plain memory for now)
+//   0xFE00-0xFE9F  sprite table (OAM); reads 0xFF while an OAM DMA runs
 //   0xFEA0-0xFEFF  not connected: reads 0x00, ignores writes
 //   0xFF00-0xFF7F  I/O registers; addresses with no register read 0xFF
 //   0xFF80-0xFFFE  high RAM
@@ -61,11 +62,19 @@ public:
     [[nodiscard]] const std::string& serial_output() const noexcept;
 
 private:
+    // Reads as the DMA controller sees memory: no OAM blocking, and sources
+    // from 0xE000 up reach work RAM, as echo RAM does for the CPU.
+    [[nodiscard]] std::uint8_t dma_read(std::uint16_t address) const noexcept;
+    void step_dma() noexcept;
+
     std::vector<std::uint8_t> rom_;
     std::array<std::uint8_t, kAddressSpace> memory_{};
     Serial serial_;
     Timer timer_;
     Ppu ppu_;
+    OamDma dma_;
+    // Ticks not yet making up a whole machine cycle, for the DMA.
+    std::uint32_t dma_ticks_ = 0;
     // The boot ROM leaves the VBlank request set.
     std::uint8_t interrupt_flag_ = 0x01;
     std::uint8_t interrupt_enable_ = 0x00;

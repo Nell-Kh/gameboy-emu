@@ -22,6 +22,13 @@ constexpr std::uint16_t kUnusableStart = 0xFEA0;
 constexpr std::uint16_t kIoStart = 0xFF00;
 constexpr std::uint8_t kUnusableValue = 0x00;
 
+constexpr std::uint16_t kOamStart = 0xFE00;
+constexpr std::uint16_t kTicksPerMachineCycle = 4;
+
+constexpr bool in_oam(std::uint16_t address) noexcept {
+    return address >= kOamStart && address < kUnusableStart;
+}
+
 // Folds an echo RAM address onto the work RAM it mirrors.
 constexpr std::uint16_t resolve_echo(std::uint16_t address) noexcept {
     if (address >= kEchoStart && address <= kEchoEnd) {
@@ -89,6 +96,9 @@ std::uint8_t Bus::read8(std::uint16_t address) const noexcept {
         return address < rom_.size() ? rom_[address] : kOpenBus;
     }
     address = resolve_echo(address);
+    if (in_oam(address) && dma_.oam_blocked()) {
+        return kOpenBus;
+    }
     if (in_unusable_region(address)) {
         return kUnusableValue;
     }
@@ -107,6 +117,8 @@ std::uint8_t Bus::read8(std::uint16_t address) const noexcept {
         case Ppu::kLcdc:
         case Ppu::kLy:
             return ppu_.read(address);
+        case OamDma::kRegister:
+            return dma_.read();
         case kInterruptFlag:
             // The top three bits do not exist and read as 1.
             return static_cast<std::uint8_t>(interrupt_flag_ | ~kInterruptBits);
@@ -127,7 +139,8 @@ void Bus::write8(std::uint16_t address, std::uint8_t value) {
         return;
     }
     address = resolve_echo(address);
-    if (in_unusable_region(address) || is_unmapped_io(address)) {
+    if (in_unusable_region(address) || is_unmapped_io(address) ||
+        (in_oam(address) && dma_.oam_blocked())) {
         return;
     }
     switch (address) {
@@ -145,6 +158,9 @@ void Bus::write8(std::uint16_t address, std::uint8_t value) {
         case Ppu::kLy:
             ppu_.write(address, value);
             break;
+        case OamDma::kRegister:
+            dma_.write(value);
+            break;
         case kInterruptFlag:
             interrupt_flag_ = value & kInterruptBits;
             break;
@@ -159,6 +175,11 @@ void Bus::write8(std::uint16_t address, std::uint8_t value) {
 
 void Bus::tick(std::uint32_t t_cycles) noexcept {
     cycles_ += t_cycles;
+    dma_ticks_ += t_cycles;
+    while (dma_ticks_ >= kTicksPerMachineCycle) {
+        dma_ticks_ -= kTicksPerMachineCycle;
+        step_dma();
+    }
     ppu_.tick(t_cycles);
     if (timer_.tick(t_cycles)) {
         request_interrupt(Interrupt::Timer);
@@ -179,6 +200,22 @@ void Bus::request_interrupt(Interrupt source) noexcept {
 void Bus::acknowledge_interrupt(Interrupt source) noexcept {
     interrupt_flag_ =
         static_cast<std::uint8_t>(interrupt_flag_ & ~static_cast<std::uint8_t>(source));
+}
+
+std::uint8_t Bus::dma_read(std::uint16_t address) const noexcept {
+    if (address >= kEchoStart) {
+        address = static_cast<std::uint16_t>(address - kEchoOffset);
+    }
+    if (address < kRomRegionSize) {
+        return address < rom_.size() ? rom_[address] : kOpenBus;
+    }
+    return memory_[address];
+}
+
+void Bus::step_dma() noexcept {
+    if (const auto source = dma_.step()) {
+        memory_[kOamStart + (*source & 0xFFU)] = dma_read(*source);
+    }
 }
 
 bool Bus::interrupt_requested(Interrupt source) const noexcept {

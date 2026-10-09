@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "core/interrupts.h"
+#include "core/oam_dma.h"
 #include "core/ppu.h"
 #include "core/serial.h"
 #include "core/timer.h"
@@ -180,6 +181,72 @@ TEST(Bus, JoypadReadsNoButtonsPressedAndKeepsTheSelectBits) {
     EXPECT_EQ(bus.read8(0xFF00), 0xEF);
     bus.write8(0xFF00, 0x10);
     EXPECT_EQ(bus.read8(0xFF00), 0xDF);
+}
+
+// Starts an OAM DMA from `page`00 and runs it until OAM is free again. The
+// write is cycle 0; the last byte is copied in cycle 161 and OAM is released
+// in cycle 162.
+void run_oam_dma(Bus& bus, std::uint8_t page) {
+    bus.write8(core::OamDma::kRegister, page);
+    bus.tick(162 * 4);
+}
+
+TEST(Bus, OamDmaCopies160BytesIntoTheSpriteTable) {
+    Bus bus;
+    for (std::uint16_t i = 0; i < 0xA0; ++i) {
+        bus.write8(static_cast<std::uint16_t>(0xC100 + i), static_cast<std::uint8_t>(i ^ 0x5A));
+    }
+    run_oam_dma(bus, 0xC1);
+    for (std::uint16_t i = 0; i < 0xA0; ++i) {
+        EXPECT_EQ(bus.read8(static_cast<std::uint16_t>(0xFE00 + i)), i ^ 0x5A) << "byte " << i;
+    }
+}
+
+TEST(Bus, OamDmaCanCopyFromTheCartridgeRom) {
+    Bus bus;
+    bus.load_rom(test::make_rom({0x11, 0x22, 0x33}, 0x4000));
+    run_oam_dma(bus, 0x40);
+    EXPECT_EQ(bus.read8(0xFE00), 0x11);
+    EXPECT_EQ(bus.read8(0xFE02), 0x33);
+}
+
+TEST(Bus, OamDmaFromE000UpReadsWorkRam) {
+    Bus bus;
+    bus.write8(0xDE00, 0x77);
+    bus.write8(0xDF9F, 0x88);
+    run_oam_dma(bus, 0xFE);
+    EXPECT_EQ(bus.read8(0xFE00), 0x77);
+    run_oam_dma(bus, 0xFF);
+    EXPECT_EQ(bus.read8(0xFE9F), 0x88);
+}
+
+TEST(Bus, OamReadsFFAndIgnoresWritesWhileTheDmaRuns) {
+    Bus bus;
+    bus.write8(0xFE10, 0x42);
+    bus.write8(core::OamDma::kRegister, 0xC0);
+    bus.tick(4);  // cycle 1: still accessible
+    EXPECT_EQ(bus.read8(0xFE10), 0x42);
+    bus.tick(4);  // cycle 2: the transfer runs
+    EXPECT_EQ(bus.read8(0xFE10), 0xFF);
+    bus.write8(0xFE10, 0x99);
+    bus.tick(159 * 4);  // cycle 161: last byte
+    EXPECT_EQ(bus.read8(0xFE10), 0xFF);
+    bus.tick(4);  // cycle 162: free again
+    EXPECT_EQ(bus.read8(0xFE10), 0x00);
+}
+
+TEST(Bus, HighRamStaysUsableDuringOamDma) {
+    Bus bus;
+    bus.write8(core::OamDma::kRegister, 0xC0);
+    bus.tick(8);
+    bus.write8(0xFF80, 0x12);
+    EXPECT_EQ(bus.read8(0xFF80), 0x12);
+}
+
+TEST(Bus, OamDmaRegisterReadsBackTheLastWrite) {
+    Bus bus;
+    bus.write8(core::OamDma::kRegister, 0xC3);
+    EXPECT_EQ(bus.read8(core::OamDma::kRegister), 0xC3);
 }
 
 TEST(Bus, TickAccumulatesCycles) {

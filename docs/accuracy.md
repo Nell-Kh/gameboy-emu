@@ -48,6 +48,16 @@ Blargg's timing ROMs, from the same repository:
 | `intr_timing` | the duration of an interrupt dispatch | Passed |
 | `if_ie_registers` | IF and IE behaviour, including the unused bits | Passed |
 | `interrupts/ie_push` | dispatch cancelled when pushing PC overwrites IE | Passed |
+| `oam_dma/basic`, `oam_dma/reg_read` | OAM DMA copies 160 bytes; its register reads back | Passed |
+| `oam_dma/sources-GS` | DMA sources across the address space, `0xE0`-`0xFF` reaching work RAM | Passed |
+| `oam_dma_start`, `oam_dma_timing` | the cycle OAM becomes blocked and the cycle it is free again | Passed |
+| `oam_dma_restart` | starting a new DMA while one runs | Passed |
+| `call_timing`, `call_timing2`, `call_cc_timing`, `call_cc_timing2` | in which cycle CALL reads and writes, timed with OAM DMA | Passed |
+| `jp_timing`, `jp_cc_timing`, `ret_timing`, `ret_cc_timing`, `reti_timing`, `rst_timing` | the same for JP, RET, RETI and RST | Passed |
+| `push_timing`, `pop_timing`, `add_sp_e_timing`, `ld_hl_sp_e_timing` | the same for the stack instructions | Passed |
+| `reti_intr_timing`, `halt_ime1_timing`, `div_timing` | interrupt after RETI, wake from HALT, DIV phase | Passed |
+| `instr/daa` | DAA for every input | Passed |
+| `boot_regs-dmgABC` | CPU registers after boot | Passed |
 | `bits/unused_hwio-GS` | unused and write-only I/O bits read as 1; unmapped I/O reads `0xFF` | Passed |
 | `bits/mem_oam` | the sprite table (OAM) is readable and writable | Passed |
 | `bits/reg_f` | the low four bits of F are always 0 | Passed |
@@ -62,12 +72,15 @@ To reproduce one by hand:
 
 - The combined `cpu_instrs.gb` (needs MBC1 bank switching, M2).
 - The combined `mem_timing.gb` (the three individual ROMs above cover the same checks).
-- Other Mooneye acceptance tests. These were run by hand and do not pass yet:
-  - `call_timing`, `jp_timing`, `ret_timing`, `reti_timing`, `push_timing`, `add_sp_e_timing`,
-    `ld_hl_sp_e_timing`: they measure timing with OAM DMA, which is not implemented (M2).
-  - `halt_ime0_ei`, `halt_ime0_nointr_timing`, `halt_ime1_timing2-GS`: they do not use OAM DMA but
-    do read PPU registers; the cause has not been investigated yet.
-- No other Mooneye test has been run.
+- The other Mooneye acceptance tests in the same folders. All were run by hand; these do not pass:
+  - `boot_div-dmgABCmgb` and `boot_hwio-dmgABCmgb`: the exact DIV phase and the I/O register values
+    the boot ROM leaves behind are not modelled.
+  - `di_timing-GS`, `halt_ime0_ei`, `halt_ime0_nointr_timing`, `halt_ime1_timing2-GS`: they read
+    PPU registers and fail. The cause has not been investigated; missing PPU behaviour (M3) is the
+    likely one, but that is not confirmed.
+  - `boot_*` tests for other models (`dmg0`, `mgb`, `sgb`, `sgb2`, `-S`) are expected to fail on a
+    DMG.
+  - The `ppu/` and `serial/` folders have not been run.
 - Anything involving the screen or sound (M3, M5).
 
 ## Known simplifications
@@ -121,7 +134,10 @@ that is a bug in this document.
   (`0xFEA0-0xFEFF`) reads `0x00` and ignores writes. Video RAM, cartridge RAM and OAM are plain
   memory: there are no PPU access restrictions, and on hardware the unusable region also reads
   differently while the PPU is scanning OAM.
-- **OAM DMA** (`0xFF46`) is not implemented. Writing to it does nothing but store the byte.
+- **OAM DMA** copies one byte per machine cycle and blocks OAM (reads `0xFF`, writes ignored) from
+  the second cycle after the write to `0xFF46` until 160 cycles later, as the Mooneye tests check.
+  Not modelled: on hardware the CPU also cannot use the bus the DMA is reading from (ROM, work RAM)
+  and reads the DMA's byte instead. Here only OAM is blocked; everything else stays usable.
 - **Cartridges:** only the first 32 KiB of a ROM are visible. There is no mapper, writes to the
   ROM region are ignored, and `0xA000-0xBFFF` is plain RAM whatever the cartridge header says.
 - **I/O registers:** SB, SC, DIV, TIMA, TMA, TAC, LCDC, LY, IF and IE are emulated. Addresses

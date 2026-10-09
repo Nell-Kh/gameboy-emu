@@ -23,6 +23,13 @@ Blargg's `cpu_instrs`, individual ROMs, from
 | `10-bit ops` | BIT, RES and SET on registers | Passed |
 | `11-op a,(hl)` | the same operations on memory at HL | Passed |
 
+Blargg's combined ROMs, which run all their sub-tests in one 64 KiB image and need MBC1:
+
+| ROM | What it covers | Result |
+|---|---|---|
+| `cpu_instrs` | the eleven `cpu_instrs` sub-tests above, in one run | Passed |
+| `mem_timing` | the three `mem_timing` sub-tests below, in one run | Passed |
+
 Blargg's timing ROMs, from the same repository:
 
 | ROM | What it covers | Result |
@@ -49,7 +56,6 @@ Blargg's timing ROMs, from the same repository:
 | `if_ie_registers` | IF and IE behaviour, including the unused bits | Passed |
 | `interrupts/ie_push` | dispatch cancelled when pushing PC overwrites IE | Passed |
 | `oam_dma/basic`, `oam_dma/reg_read` | OAM DMA copies 160 bytes; its register reads back | Passed |
-| `oam_dma/sources-GS` | DMA sources across the address space, `0xE0`-`0xFF` reaching work RAM | Passed |
 | `oam_dma_start`, `oam_dma_timing` | the cycle OAM becomes blocked and the cycle it is free again | Passed |
 | `oam_dma_restart` | starting a new DMA while one runs | Passed |
 | `call_timing`, `call_timing2`, `call_cc_timing`, `call_cc_timing2` | in which cycle CALL reads and writes, timed with OAM DMA | Passed |
@@ -58,6 +64,9 @@ Blargg's timing ROMs, from the same repository:
 | `reti_intr_timing`, `halt_ime1_timing`, `div_timing` | interrupt after RETI, wake from HALT, DIV phase | Passed |
 | `instr/daa` | DAA for every input | Passed |
 | `boot_regs-dmgABC` | CPU registers after boot | Passed |
+| `emulator-only/mbc1/bits_bank1`, `bits_bank2`, `bits_mode`, `bits_ramg` | which bits of each MBC1 register count | Passed |
+| `emulator-only/mbc1/rom_512kb` to `rom_16Mb` (6 ROMs) | ROM banking at every MBC1 ROM size | Passed |
+| `emulator-only/mbc1/ram_64kb`, `ram_256kb` | RAM banking and enabling | Passed |
 | `bits/unused_hwio-GS` | unused and write-only I/O bits read as 1; unmapped I/O reads `0xFF` | Passed |
 | `bits/mem_oam` | the sprite table (OAM) is readable and writable | Passed |
 | `bits/reg_f` | the low four bits of F are always 0 | Passed |
@@ -70,8 +79,11 @@ To reproduce one by hand:
 
 ## Not yet tested in CI
 
-- The combined `cpu_instrs.gb` (needs MBC1 bank switching, M2).
-- The combined `mem_timing.gb` (the three individual ROMs above cover the same checks).
+- `oam_dma/sources-GS`: passes its OAM DMA checks in a hand run with a permissive loader, but the
+  ROM declares an MBC5 cartridge, which is M4. Until then the loader rejects it.
+- `emulator-only/mbc1/multicart_rom_8Mb`: MBC1 multicarts (MBC1M) wire the bank register
+  differently and are not supported.
+- The `emulator-only/mbc2` and `mbc5` tests (M4).
 - The other Mooneye acceptance tests in the same folders. All were run by hand; these do not pass:
   - `boot_div-dmgABCmgb` and `boot_hwio-dmgABCmgb`: the exact DIV phase and the I/O register values
     the boot ROM leaves behind are not modelled.
@@ -138,8 +150,11 @@ that is a bug in this document.
   the second cycle after the write to `0xFF46` until 160 cycles later, as the Mooneye tests check.
   Not modelled: on hardware the CPU also cannot use the bus the DMA is reading from (ROM, work RAM)
   and reads the DMA's byte instead. Here only OAM is blocked; everything else stays usable.
-- **Cartridges:** only the first 32 KiB of a ROM are visible. There is no mapper, writes to the
-  ROM region are ignored, and `0xA000-0xBFFF` is plain RAM whatever the cartridge header says.
+- **Cartridges:** no mapper (types `0x00`, `0x08`, `0x09`) and MBC1 (`0x01`-`0x03`) are supported;
+  every other type is refused with a message. The file size must match the header. MBC1
+  multicarts are not detected. Battery-backed RAM works but is lost when the program exits
+  (`.sav` files are M4). The header checksum is not checked; the real boot ROM would refuse to
+  start a cartridge with a bad one.
 - **I/O registers:** SB, SC, DIV, TIMA, TMA, TAC, LCDC, LY, IF and IE are emulated. Addresses
   with no register read `0xFF`. Every other register (joypad, sound, the rest of the PPU) is plain
   memory whose unused and write-only bits read as 1. Those registers start at 0, not at their

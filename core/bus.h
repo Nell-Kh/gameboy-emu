@@ -3,10 +3,11 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <string>
-#include <vector>
 
+#include "core/cartridge/cartridge.h"
 #include "core/interrupts.h"
 #include "core/oam_dma.h"
 #include "core/ppu.h"
@@ -19,8 +20,10 @@ namespace core {
 // The CPU never touches memory directly; every read and write goes through here
 // and is routed to whatever lives at that address.
 //
-//   0x0000-0x7FFF  cartridge ROM (read-only)
-//   0x8000-0xDFFF  RAM: video, cartridge and work RAM (plain memory for now)
+//   0x0000-0x7FFF  cartridge ROM; writes go to the cartridge's mapper
+//   0x8000-0x9FFF  video RAM (plain memory for now)
+//   0xA000-0xBFFF  cartridge RAM, if the cartridge has any
+//   0xC000-0xDFFF  work RAM
 //   0xE000-0xFDFF  echo RAM, a mirror of 0xC000-0xDDFF
 //   0xFE00-0xFE9F  sprite table (OAM); reads 0xFF while an OAM DMA runs
 //   0xFEA0-0xFEFF  not connected: reads 0x00, ignores writes
@@ -35,8 +38,12 @@ public:
     static constexpr std::uint16_t kInterruptFlag = 0xFF0F;
     static constexpr std::uint16_t kInterruptEnable = 0xFFFF;
 
-    // Inserts a cartridge. Only the first 32 KiB are visible until bank
-    // switching (MBC) arrives in M2.
+    // Inserts a cartridge, replacing any that was there. With none inserted,
+    // the cartridge areas read 0xFF.
+    void insert_cartridge(std::unique_ptr<Cartridge> cartridge) noexcept;
+
+    // Test convenience: inserts `rom` as a cartridge with no mapper and no
+    // RAM, without looking at its header.
     void load_rom(std::span<const std::uint8_t> rom);
 
     [[nodiscard]] std::uint8_t read8(std::uint16_t address) const noexcept;
@@ -67,7 +74,7 @@ private:
     [[nodiscard]] std::uint8_t dma_read(std::uint16_t address) const noexcept;
     void step_dma() noexcept;
 
-    std::vector<std::uint8_t> rom_;
+    std::unique_ptr<Cartridge> cartridge_;
     std::array<std::uint8_t, kAddressSpace> memory_{};
     Serial serial_;
     Timer timer_;

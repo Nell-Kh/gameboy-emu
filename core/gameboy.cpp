@@ -1,13 +1,21 @@
 #include "core/gameboy.h"
 
+#include <utility>
+
+#include "core/cartridge/cartridge.h"
+
 namespace core {
 
 std::string_view GameBoy::version() noexcept {
     return GB_VERSION;
 }
 
-void GameBoy::load_rom(std::span<const std::uint8_t> rom) {
-    bus_.load_rom(rom);
+std::string GameBoy::load_rom(std::span<const std::uint8_t> rom) {
+    CartridgeOrError result = make_cartridge(rom);
+    if (result.cartridge) {
+        bus_.insert_cartridge(std::move(result.cartridge));
+    }
+    return result.error;
 }
 
 std::uint32_t GameBoy::step() {

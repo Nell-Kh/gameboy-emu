@@ -3,8 +3,10 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <utility>
 #include <vector>
 
+#include "core/cartridge/cartridge.h"
 #include "core/interrupts.h"
 #include "core/oam_dma.h"
 #include "core/ppu.h"
@@ -247,6 +249,32 @@ TEST(Bus, OamDmaRegisterReadsBackTheLastWrite) {
     Bus bus;
     bus.write8(core::OamDma::kRegister, 0xC3);
     EXPECT_EQ(bus.read8(core::OamDma::kRegister), 0xC3);
+}
+
+TEST(Bus, WithoutACartridgeTheCartridgeRamAreaReadsFF) {
+    Bus bus;
+    bus.write8(0xA000, 0x12);
+    EXPECT_EQ(bus.read8(0xA000), 0xFF);
+    EXPECT_EQ(bus.read8(0xBFFF), 0xFF);
+}
+
+TEST(Bus, CartridgeRamAndMapperWritesGoToTheCartridge) {
+    std::vector<std::uint8_t> rom(0x10000, 0x00);
+    rom[0x4000] = 0x01;
+    rom[0x0147] = 0x03;  // MBC1 + RAM + battery
+    rom[0x0148] = 0x01;  // 64 KiB
+    rom[0x0149] = 0x02;  // 8 KiB RAM
+    auto result = core::make_cartridge(rom);
+    ASSERT_NE(result.cartridge, nullptr) << result.error;
+
+    Bus bus;
+    bus.insert_cartridge(std::move(result.cartridge));
+    EXPECT_EQ(bus.read8(0x4000), 0x01);
+    bus.write8(0x0000, 0x0A);  // enable RAM
+    bus.write8(0xA000, 0x42);
+    EXPECT_EQ(bus.read8(0xA000), 0x42);
+    bus.write8(0x2000, 0x03);  // bank 3 wraps to bank 3 of 4: all zeros
+    EXPECT_EQ(bus.read8(0x4000), 0x00);
 }
 
 TEST(Bus, TickAccumulatesCycles) {

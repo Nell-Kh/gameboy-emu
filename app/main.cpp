@@ -29,6 +29,7 @@ constexpr int kExitPassed = 0;
 constexpr int kExitFailed = 1;
 constexpr int kExitNoVerdict = 2;
 constexpr int kExitUsage = 64;
+constexpr int kExitBadRom = 65;
 constexpr int kExitNoInput = 66;
 
 constexpr std::uint64_t kDefaultMaxSeconds = 60;
@@ -163,7 +164,10 @@ int run_headless(const Options& options) {
     }
 
     core::GameBoy gb;
-    gb.load_rom(*rom);
+    if (const std::string error = gb.load_rom(*rom); !error.empty()) {
+        std::cerr << "gameboy-emu: cannot run " << options.rom_path << ": " << error << "\n";
+        return kExitBadRom;
+    }
 
     const std::uint64_t limit = options.max_seconds * core::GameBoy::kTicksPerSecond;
     const std::string& serial = gb.serial_output();

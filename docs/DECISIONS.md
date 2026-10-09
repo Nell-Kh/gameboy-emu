@@ -142,3 +142,18 @@ record that supersedes the old one, not by editing history.
   (ADR-007).
 - **Consequences:** No assembler in CI and no ROM in this repository. The Mooneye build in v7.0
   dates from 2022; newer upstream changes are not picked up until the pin is moved.
+
+## ADR-012: Cartridges are a polymorphic interface owned by the bus
+
+- **Context:** Cartridges differ in their mapper chip (none, MBC1, MBC3, MBC5, ...), which decides
+  how writes to the ROM area switch banks and how the RAM area behaves. The bus should not know
+  which one is inserted.
+- **Decision:** `core::Cartridge` is an abstract class with four calls: read and write for the ROM
+  area (`0x0000-0x7FFF`) and for the RAM area (`0xA000-0xBFFF`). `NoMbc` and `Mbc1` implement it.
+  The bus holds the inserted cartridge as `std::unique_ptr<Cartridge>`: it owns it, a new one
+  replaces the old, and with none inserted both areas read `0xFF`. `make_cartridge()` reads the
+  header, checks it against the file and picks the class; an unsupported or inconsistent ROM gives
+  an error message, not a half-working cartridge.
+- **Consequences:** One virtual call per cartridge access, which is negligible next to the rest of
+  a memory access. Adding MBC3 and MBC5 in M4 means one new class each and one line in the
+  factory. Battery-backed RAM is kept in memory only until M4 adds `.sav` files.

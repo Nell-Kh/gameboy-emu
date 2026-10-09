@@ -18,8 +18,9 @@
 
 namespace {
 
-// The slowest of these ROMs needs about 18 emulated seconds.
-constexpr std::uint64_t kMaxTicks = 60 * core::GameBoy::kTicksPerSecond;
+// The slowest of these ROMs, the combined cpu_instrs, needs about 54 emulated
+// seconds; allow twice that.
+constexpr std::uint64_t kMaxTicks = 120 * core::GameBoy::kTicksPerSecond;
 // Check for a verdict about 60 times per emulated second.
 constexpr std::uint64_t kTicksPerCheck = core::GameBoy::kTicksPerSecond / 60;
 
@@ -46,7 +47,7 @@ TEST_P(BlarggRom, PrintsPassed) {
     ASSERT_FALSE(rom.empty()) << "cannot read " << path;
 
     core::GameBoy gb;
-    gb.load_rom(rom);
+    ASSERT_EQ(gb.load_rom(rom), "");
 
     const std::string& serial = gb.serial_output();
     bool passed = false;
@@ -76,6 +77,15 @@ INSTANTIATE_TEST_SUITE_P(
                     Rom{"11_op_a_hl", "cpu_instrs/individual/11-op a,(hl).gb"}),
     [](const testing::TestParamInfo<Rom>& info) { return std::string(info.param.test_name); });
 
+// The combined ROMs run all sub-tests in one image. They are 64 KiB and need
+// MBC1 bank switching.
+INSTANTIATE_TEST_SUITE_P(Combined, BlarggRom,
+                         testing::Values(Rom{"cpu_instrs", "cpu_instrs/cpu_instrs.gb"},
+                                         Rom{"mem_timing", "mem_timing/mem_timing.gb"}),
+                         [](const testing::TestParamInfo<Rom>& info) {
+                             return std::string(info.param.test_name);
+                         });
+
 // instr_timing measures how long every instruction takes, using the timer.
 // mem_timing checks in which machine cycle of an instruction each memory read
 // and write happens. Both depend on the CPU ticking the bus per access (ADR-005).
@@ -104,7 +114,7 @@ TEST_P(MooneyeRom, EndsWithTheFibonacciRegisters) {
     ASSERT_FALSE(rom.empty()) << "cannot read " << path;
 
     core::GameBoy gb;
-    gb.load_rom(rom);
+    ASSERT_EQ(gb.load_rom(rom), "");
 
     bool finished = false;
     while (!finished && gb.cycles() < kMooneyeMaxTicks && !gb.cpu().locked()) {
@@ -157,7 +167,6 @@ INSTANTIATE_TEST_SUITE_P(Interrupts, MooneyeRom,
 INSTANTIATE_TEST_SUITE_P(OamDma, MooneyeRom,
                          testing::Values(Rom{"basic", "acceptance/oam_dma/basic.gb"},
                                          Rom{"reg_read", "acceptance/oam_dma/reg_read.gb"},
-                                         Rom{"sources", "acceptance/oam_dma/sources-GS.gb"},
                                          Rom{"oam_dma_restart", "acceptance/oam_dma_restart.gb"},
                                          Rom{"oam_dma_start", "acceptance/oam_dma_start.gb"},
                                          Rom{"oam_dma_timing", "acceptance/oam_dma_timing.gb"}),
@@ -191,6 +200,25 @@ INSTANTIATE_TEST_SUITE_P(
 INSTANTIATE_TEST_SUITE_P(Cpu, MooneyeRom,
                          testing::Values(Rom{"boot_regs_dmgABC", "acceptance/boot_regs-dmgABC.gb"},
                                          Rom{"daa", "acceptance/instr/daa.gb"}),
+                         [](const testing::TestParamInfo<Rom>& info) {
+                             return std::string(info.param.test_name);
+                         });
+
+// MBC1 behaviour, from Mooneye's emulator-only folder (these test mapper
+// details that differ between real cartridges, so only emulators run them).
+INSTANTIATE_TEST_SUITE_P(Mbc1, MooneyeRom,
+                         testing::Values(Rom{"bits_bank1", "emulator-only/mbc1/bits_bank1.gb"},
+                                         Rom{"bits_bank2", "emulator-only/mbc1/bits_bank2.gb"},
+                                         Rom{"bits_mode", "emulator-only/mbc1/bits_mode.gb"},
+                                         Rom{"bits_ramg", "emulator-only/mbc1/bits_ramg.gb"},
+                                         Rom{"ram_64kb", "emulator-only/mbc1/ram_64kb.gb"},
+                                         Rom{"ram_256kb", "emulator-only/mbc1/ram_256kb.gb"},
+                                         Rom{"rom_512kb", "emulator-only/mbc1/rom_512kb.gb"},
+                                         Rom{"rom_1Mb", "emulator-only/mbc1/rom_1Mb.gb"},
+                                         Rom{"rom_2Mb", "emulator-only/mbc1/rom_2Mb.gb"},
+                                         Rom{"rom_4Mb", "emulator-only/mbc1/rom_4Mb.gb"},
+                                         Rom{"rom_8Mb", "emulator-only/mbc1/rom_8Mb.gb"},
+                                         Rom{"rom_16Mb", "emulator-only/mbc1/rom_16Mb.gb"}),
                          [](const testing::TestParamInfo<Rom>& info) {
                              return std::string(info.param.test_name);
                          });

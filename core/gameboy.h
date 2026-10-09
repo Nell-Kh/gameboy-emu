@@ -29,9 +29,10 @@ public:
     GameBoy& operator=(GameBoy&&) = delete;
     ~GameBoy() = default;
 
-    // Inserts a cartridge. Execution starts at 0x0100, as it does after the
-    // real boot ROM.
-    void load_rom(std::span<const std::uint8_t> rom);
+    // Inserts the cartridge described by a ROM image. Execution starts at
+    // 0x0100, as it does after the real boot ROM. Returns an empty string on
+    // success, or why the ROM cannot be used; the machine is then unchanged.
+    [[nodiscard]] std::string load_rom(std::span<const std::uint8_t> rom);
 
     // Runs one CPU instruction and returns how many clock ticks it took.
     std::uint32_t step();

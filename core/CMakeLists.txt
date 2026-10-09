@@ -1,6 +1,9 @@
 # The emulator core. No SDL, no I/O: it must build and test on its own.
 add_library(core STATIC
   bus.cpp
+  cartridge/cartridge.cpp
+  cartridge/mbc1.cpp
+  cartridge/no_mbc.cpp
   cpu.cpp
   gameboy.cpp
   oam_dma.cpp

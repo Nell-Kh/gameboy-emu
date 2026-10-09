@@ -1,6 +1,9 @@
 #include "core/bus.h"
 
 #include <array>
+#include <utility>
+
+#include "core/cartridge/no_mbc.h"
 
 namespace core {
 
@@ -21,6 +24,13 @@ constexpr std::uint16_t kEchoOffset = 0x2000;
 constexpr std::uint16_t kUnusableStart = 0xFEA0;
 constexpr std::uint16_t kIoStart = 0xFF00;
 constexpr std::uint8_t kUnusableValue = 0x00;
+
+constexpr std::uint16_t kCartridgeRamStart = 0xA000;
+constexpr std::uint16_t kCartridgeRamEnd = 0xBFFF;
+
+constexpr bool in_cartridge_ram(std::uint16_t address) noexcept {
+    return address >= kCartridgeRamStart && address <= kCartridgeRamEnd;
+}
 
 constexpr std::uint16_t kOamStart = 0xFE00;
 constexpr std::uint16_t kTicksPerMachineCycle = 4;
@@ -87,13 +97,20 @@ constexpr bool is_io(std::uint16_t address) noexcept {
 
 }  // namespace
 
+void Bus::insert_cartridge(std::unique_ptr<Cartridge> cartridge) noexcept {
+    cartridge_ = std::move(cartridge);
+}
+
 void Bus::load_rom(std::span<const std::uint8_t> rom) {
-    rom_.assign(rom.begin(), rom.end());
+    cartridge_ = std::make_unique<NoMbc>(rom, 0);
 }
 
 std::uint8_t Bus::read8(std::uint16_t address) const noexcept {
     if (address < kRomRegionSize) {
-        return address < rom_.size() ? rom_[address] : kOpenBus;
+        return cartridge_ ? cartridge_->read_rom(address) : kOpenBus;
+    }
+    if (in_cartridge_ram(address)) {
+        return cartridge_ ? cartridge_->read_ram(address) : kOpenBus;
     }
     address = resolve_echo(address);
     if (in_oam(address) && dma_.oam_blocked()) {
@@ -134,8 +151,16 @@ std::uint8_t Bus::read8(std::uint16_t address) const noexcept {
 
 void Bus::write8(std::uint16_t address, std::uint8_t value) {
     if (address < kRomRegionSize) {
-        // ROM cannot be written. Cartridges with a mapper chip watch these
-        // writes to switch banks; that is M2.
+        // ROM cannot be written; a mapper chip uses these writes to switch banks.
+        if (cartridge_) {
+            cartridge_->write_rom(address, value);
+        }
+        return;
+    }
+    if (in_cartridge_ram(address)) {
+        if (cartridge_) {
+            cartridge_->write_ram(address, value);
+        }
         return;
     }
     address = resolve_echo(address);
@@ -207,7 +232,10 @@ std::uint8_t Bus::dma_read(std::uint16_t address) const noexcept {
         address = static_cast<std::uint16_t>(address - kEchoOffset);
     }
     if (address < kRomRegionSize) {
-        return address < rom_.size() ? rom_[address] : kOpenBus;
+        return cartridge_ ? cartridge_->read_rom(address) : kOpenBus;
+    }
+    if (in_cartridge_ram(address)) {
+        return cartridge_ ? cartridge_->read_ram(address) : kOpenBus;
     }
     return memory_[address];
 }

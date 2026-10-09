@@ -4,9 +4,9 @@
 
 A Game Boy (DMG) emulator in C++20. Work in progress.
 
-**Status:** the CPU is complete. All 500 instructions, interrupts, HALT and the timer are
-implemented. Blargg's `cpu_instrs`, `instr_timing` and `mem_timing` test ROMs and Mooneye's
-timer and interrupt tests pass in CI. There is no screen or sound
+**Status:** the CPU, timer, memory map, OAM DMA and MBC1 cartridges are done. All 500
+instructions are implemented, and Blargg's `cpu_instrs`, `instr_timing` and `mem_timing` and 58
+Mooneye tests pass in CI. There is no screen or sound
 yet, so it cannot show a game; see [docs/accuracy.md](docs/accuracy.md) for exactly what is and
 is not covered.
 

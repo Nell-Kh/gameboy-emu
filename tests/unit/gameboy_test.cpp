@@ -36,7 +36,7 @@ TEST(GameBoy, StartsAtTheCartridgeEntryPointWithNoTimeElapsed) {
 
 TEST(GameBoy, StepRunsOneInstructionOfTheLoadedRom) {
     GameBoy gb;
-    gb.load_rom(ok_rom());
+    ASSERT_EQ(gb.load_rom(ok_rom()), "");
 
     EXPECT_EQ(gb.step(), 8U);
     EXPECT_EQ(gb.cpu().registers().a, 'O');
@@ -45,7 +45,7 @@ TEST(GameBoy, StepRunsOneInstructionOfTheLoadedRom) {
 
 TEST(GameBoy, AProgramCanPrintOverTheSerialPort) {
     GameBoy gb;
-    gb.load_rom(ok_rom());
+    ASSERT_EQ(gb.load_rom(ok_rom()), "");
 
     gb.run_for(1000);
     EXPECT_EQ(gb.serial_output(), "OK");
@@ -53,7 +53,7 @@ TEST(GameBoy, AProgramCanPrintOverTheSerialPort) {
 
 TEST(GameBoy, RunForStopsOnAnInstructionBoundaryAtOrAfterTheTarget) {
     GameBoy gb;
-    gb.load_rom(ok_rom());
+    ASSERT_EQ(gb.load_rom(ok_rom()), "");
 
     // The first instructions take 8, 12, 8, 12 ticks: boundaries at 8, 20, 28, 40.
     EXPECT_EQ(gb.run_for(10), 20U);
@@ -64,23 +64,31 @@ TEST(GameBoy, RunForStopsOnAnInstructionBoundaryAtOrAfterTheTarget) {
 
 TEST(GameBoy, RunForZeroDoesNothing) {
     GameBoy gb;
-    gb.load_rom(ok_rom());
+    ASSERT_EQ(gb.load_rom(ok_rom()), "");
     EXPECT_EQ(gb.run_for(0), 0U);
     EXPECT_EQ(gb.cycles(), 0U);
 }
 
 TEST(GameBoy, OneEmulatedSecondIsTheClockRate) {
     GameBoy gb;
-    gb.load_rom(ok_rom());
+    ASSERT_EQ(gb.load_rom(ok_rom()), "");
 
     const std::uint64_t ran = gb.run_for(GameBoy::kTicksPerSecond);
     EXPECT_GE(ran, GameBoy::kTicksPerSecond);
     EXPECT_LT(ran, GameBoy::kTicksPerSecond + 24);
 }
 
+TEST(GameBoy, LoadRomRejectsAnUnusableImageAndKeepsTheOldCartridge) {
+    GameBoy gb;
+    ASSERT_EQ(gb.load_rom(ok_rom()), "");
+    const std::vector<std::uint8_t> tiny(16, 0x00);
+    EXPECT_NE(gb.load_rom(tiny), "");
+    EXPECT_EQ(gb.bus().read8(kEntry), 0x3E);
+}
+
 TEST(GameBoy, BusIsReadableFromOutside) {
     GameBoy gb;
-    gb.load_rom(ok_rom());
+    ASSERT_EQ(gb.load_rom(ok_rom()), "");
     EXPECT_EQ(gb.bus().read8(kEntry), 0x3E);
 }
 

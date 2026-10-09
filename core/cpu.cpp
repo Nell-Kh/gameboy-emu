@@ -4,7 +4,7 @@ namespace core {
 
 Cpu::Cpu(Bus& bus) noexcept : bus_(bus) {}
 
-std::uint32_t Cpu::step() noexcept {
+std::uint32_t Cpu::step() {
     const std::uint64_t start = bus_.cycles();
     if (locked_) {
         internal_cycle();
@@ -31,7 +31,7 @@ std::uint8_t Cpu::read8(std::uint16_t address) noexcept {
     return bus_.read8(address);
 }
 
-void Cpu::write8(std::uint16_t address, std::uint8_t value) noexcept {
+void Cpu::write8(std::uint16_t address, std::uint8_t value) {
     bus_.tick(kTicksPerMachineCycle);
     bus_.write8(address, value);
 }
@@ -53,7 +53,7 @@ std::uint16_t Cpu::fetch16() noexcept {
 // Hand-written for now: four opcodes, one of each timing shape, to prove the
 // model. The full table (all 500) is generated in the next step and replaces
 // this switch.
-void Cpu::execute(std::uint8_t opcode) noexcept {
+void Cpu::execute(std::uint8_t opcode) {
     switch (opcode) {
         case 0x00:  // NOP                1 cycle:  fetch
             break;

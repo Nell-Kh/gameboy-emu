@@ -21,7 +21,7 @@ public:
 
     // Executes one instruction and returns how many clock ticks it took.
     // The ticks have already been applied to the bus by the time this returns.
-    std::uint32_t step() noexcept;
+    std::uint32_t step();
 
     [[nodiscard]] Registers& registers() noexcept;
     [[nodiscard]] const Registers& registers() const noexcept;
@@ -33,7 +33,7 @@ public:
 private:
     // One machine cycle with a memory access.
     [[nodiscard]] std::uint8_t read8(std::uint16_t address) noexcept;
-    void write8(std::uint16_t address, std::uint8_t value) noexcept;
+    void write8(std::uint16_t address, std::uint8_t value);
 
     // One machine cycle with no memory access (the CPU is busy internally).
     void internal_cycle() noexcept;
@@ -43,7 +43,7 @@ private:
     [[nodiscard]] std::uint8_t fetch8() noexcept;
     [[nodiscard]] std::uint16_t fetch16() noexcept;
 
-    void execute(std::uint8_t opcode) noexcept;
+    void execute(std::uint8_t opcode);
 
     Bus& bus_;
     Registers reg_ = Registers::post_boot_dmg();

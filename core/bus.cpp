@@ -19,6 +19,9 @@ std::uint8_t Bus::read8(std::uint16_t address) const noexcept {
         return address < rom_.size() ? rom_[address] : kOpenBus;
     }
     switch (address) {
+        case Serial::kData:
+        case Serial::kControl:
+            return serial_.read(address);
         case kInterruptFlag:
             // The top three bits do not exist and read as 1.
             return static_cast<std::uint8_t>(interrupt_flag_ | ~kInterruptBits);
@@ -29,13 +32,17 @@ std::uint8_t Bus::read8(std::uint16_t address) const noexcept {
     }
 }
 
-void Bus::write8(std::uint16_t address, std::uint8_t value) noexcept {
+void Bus::write8(std::uint16_t address, std::uint8_t value) {
     if (address < kRomRegionSize) {
         // ROM cannot be written. Cartridges with a mapper chip watch these
         // writes to switch banks; that is M2.
         return;
     }
     switch (address) {
+        case Serial::kData:
+        case Serial::kControl:
+            serial_.write(address, value);
+            break;
         case kInterruptFlag:
             interrupt_flag_ = value & kInterruptBits;
             break;
@@ -50,6 +57,9 @@ void Bus::write8(std::uint16_t address, std::uint8_t value) noexcept {
 
 void Bus::tick(std::uint32_t t_cycles) noexcept {
     cycles_ += t_cycles;
+    if (serial_.tick(t_cycles)) {
+        request_interrupt(Interrupt::Serial);
+    }
 }
 
 std::uint64_t Bus::cycles() const noexcept {
@@ -71,6 +81,10 @@ bool Bus::interrupt_requested(Interrupt source) const noexcept {
 
 std::uint8_t Bus::pending_interrupts() const noexcept {
     return interrupt_flag_ & interrupt_enable_ & kInterruptBits;
+}
+
+const std::string& Bus::serial_output() const noexcept {
+    return serial_.output();
 }
 
 }  // namespace core

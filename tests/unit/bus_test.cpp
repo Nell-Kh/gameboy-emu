@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "core/interrupts.h"
+#include "core/serial.h"
 #include "test_rom.h"
 
 namespace {
@@ -162,6 +163,19 @@ TEST(Bus, UnusedEnableBitsNeverMakeAnInterruptPending) {
     bus.write8(Bus::kInterruptFlag, 0x00);
     bus.write8(Bus::kInterruptEnable, 0xE0);
     EXPECT_EQ(bus.pending_interrupts(), 0x00);
+}
+
+TEST(Bus, SerialTransferIsCapturedAndRaisesItsInterrupt) {
+    Bus bus;
+    bus.write8(Bus::kInterruptFlag, 0x00);
+    bus.write8(core::Serial::kData, 'P');
+    bus.write8(core::Serial::kControl, 0x81);
+    EXPECT_EQ(bus.serial_output(), "P");
+
+    bus.tick(core::Serial::kTicksPerTransfer - 4);
+    EXPECT_FALSE(bus.interrupt_requested(Interrupt::Serial));
+    bus.tick(4);
+    EXPECT_TRUE(bus.interrupt_requested(Interrupt::Serial));
 }
 
 }  // namespace

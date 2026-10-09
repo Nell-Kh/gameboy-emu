@@ -4,9 +4,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <string>
 #include <vector>
 
 #include "core/interrupts.h"
+#include "core/serial.h"
 
 namespace core {
 
@@ -16,7 +18,7 @@ namespace core {
 //
 //   0x0000-0x7FFF  cartridge ROM (read-only)
 //   0x8000-0xFEFF  RAM (video, cartridge, work RAM and sprite table: split up in M2/M3)
-//   0xFF00-0xFF7F  I/O registers (only the interrupt flags, IF, so far)
+//   0xFF00-0xFF7F  I/O registers (serial and interrupt flags so far)
 //   0xFF80-0xFFFE  high RAM
 //   0xFFFF         interrupt enable register (IE)
 class Bus {
@@ -32,11 +34,10 @@ public:
     void load_rom(std::span<const std::uint8_t> rom);
 
     [[nodiscard]] std::uint8_t read8(std::uint16_t address) const noexcept;
-    void write8(std::uint16_t address, std::uint8_t value) noexcept;
+    void write8(std::uint16_t address, std::uint8_t value);
 
     // Advances the rest of the machine by `t_cycles` clock ticks.
-    // The CPU calls this on every memory access (see ADR-005). For now it only
-    // counts; the timer, PPU and APU will hang off it.
+    // The CPU calls this on every memory access (see ADR-005).
     void tick(std::uint32_t t_cycles) noexcept;
 
     // Total clock ticks since power-on.
@@ -51,9 +52,13 @@ public:
     // The requested-and-enabled sources, as a bit mask (IF & IE).
     [[nodiscard]] std::uint8_t pending_interrupts() const noexcept;
 
+    // Every byte the program has sent over the serial port.
+    [[nodiscard]] const std::string& serial_output() const noexcept;
+
 private:
     std::vector<std::uint8_t> rom_;
     std::array<std::uint8_t, kAddressSpace> memory_{};
+    Serial serial_;
     // The boot ROM leaves the VBlank request set.
     std::uint8_t interrupt_flag_ = 0x01;
     std::uint8_t interrupt_enable_ = 0x00;

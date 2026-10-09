@@ -3,6 +3,7 @@ add_library(core STATIC
   bus.cpp
   cpu.cpp
   gameboy.cpp
+  serial.cpp
 )
 add_library(gb::core ALIAS core)
 

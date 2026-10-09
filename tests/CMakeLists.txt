@@ -14,6 +14,7 @@ add_executable(unit_tests
   unit/bus_test.cpp
   unit/cpu_test.cpp
   unit/registers_test.cpp
+  unit/serial_test.cpp
   unit/smoke_test.cpp
 )
 

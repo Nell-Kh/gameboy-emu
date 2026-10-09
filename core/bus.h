@@ -6,6 +6,8 @@
 #include <span>
 #include <vector>
 
+#include "core/interrupts.h"
+
 namespace core {
 
 // Everything the CPU can address: 16-bit addresses, so 64 KiB.
@@ -13,12 +15,17 @@ namespace core {
 // and is routed to whatever lives at that address.
 //
 //   0x0000-0x7FFF  cartridge ROM (read-only)
-//   0x8000-0xFFFF  RAM for now; split into video RAM, work RAM, I/O registers
-//                  and high RAM as those parts are built
+//   0x8000-0xFEFF  RAM (video, cartridge, work RAM and sprite table: split up in M2/M3)
+//   0xFF00-0xFF7F  I/O registers (only the interrupt flags, IF, so far)
+//   0xFF80-0xFFFE  high RAM
+//   0xFFFF         interrupt enable register (IE)
 class Bus {
 public:
     static constexpr std::size_t kAddressSpace = 0x10000;
     static constexpr std::size_t kRomRegionSize = 0x8000;
+
+    static constexpr std::uint16_t kInterruptFlag = 0xFF0F;
+    static constexpr std::uint16_t kInterruptEnable = 0xFFFF;
 
     // Inserts a cartridge. Only the first 32 KiB are visible until bank
     // switching (MBC) arrives in M2.
@@ -35,9 +42,21 @@ public:
     // Total clock ticks since power-on.
     [[nodiscard]] std::uint64_t cycles() const noexcept;
 
+    // Interrupts: a component requests one by setting its bit in IF. The CPU
+    // services a request only if the same bit is set in IE.
+    void request_interrupt(Interrupt source) noexcept;
+    void acknowledge_interrupt(Interrupt source) noexcept;
+    // True if `source` is requested, whether or not it is enabled.
+    [[nodiscard]] bool interrupt_requested(Interrupt source) const noexcept;
+    // The requested-and-enabled sources, as a bit mask (IF & IE).
+    [[nodiscard]] std::uint8_t pending_interrupts() const noexcept;
+
 private:
     std::vector<std::uint8_t> rom_;
     std::array<std::uint8_t, kAddressSpace> memory_{};
+    // The boot ROM leaves the VBlank request set.
+    std::uint8_t interrupt_flag_ = 0x01;
+    std::uint8_t interrupt_enable_ = 0x00;
     std::uint64_t cycles_ = 0;
 };
 

@@ -5,11 +5,13 @@
 #include <cstdint>
 #include <vector>
 
+#include "core/interrupts.h"
 #include "test_rom.h"
 
 namespace {
 
 using core::Bus;
+using core::Interrupt;
 
 TEST(Bus, RamStartsZeroed) {
     const Bus bus;
@@ -95,6 +97,71 @@ TEST(Bus, ReadingAndWritingDoNotAdvanceTime) {
     bus.write8(0xC000, 0x01);
     EXPECT_EQ(bus.read8(0xC000), 0x01);
     EXPECT_EQ(bus.cycles(), 0U);
+}
+
+TEST(Bus, InterruptFlagStartsWithVBlankRequested) {
+    const Bus bus;
+    EXPECT_EQ(bus.read8(Bus::kInterruptFlag), 0xE1);
+}
+
+TEST(Bus, UnusedInterruptFlagBitsAlwaysReadAsOne) {
+    Bus bus;
+    bus.write8(Bus::kInterruptFlag, 0x00);
+    EXPECT_EQ(bus.read8(Bus::kInterruptFlag), 0xE0);
+    bus.write8(Bus::kInterruptFlag, 0xFF);
+    EXPECT_EQ(bus.read8(Bus::kInterruptFlag), 0xFF);
+}
+
+TEST(Bus, InterruptEnableKeepsAllEightBits) {
+    Bus bus;
+    EXPECT_EQ(bus.read8(Bus::kInterruptEnable), 0x00);
+    bus.write8(Bus::kInterruptEnable, 0xA5);
+    EXPECT_EQ(bus.read8(Bus::kInterruptEnable), 0xA5);
+}
+
+TEST(Bus, RequestingAnInterruptSetsItsFlagBit) {
+    Bus bus;
+    bus.write8(Bus::kInterruptFlag, 0x00);
+    bus.request_interrupt(Interrupt::Timer);
+    EXPECT_EQ(bus.read8(Bus::kInterruptFlag), 0xE4);
+    bus.request_interrupt(Interrupt::Joypad);
+    EXPECT_EQ(bus.read8(Bus::kInterruptFlag), 0xF4);
+}
+
+TEST(Bus, InterruptRequestedReportsASingleSource) {
+    Bus bus;
+    bus.write8(Bus::kInterruptFlag, 0x00);
+    EXPECT_FALSE(bus.interrupt_requested(Interrupt::Timer));
+    bus.request_interrupt(Interrupt::Timer);
+    EXPECT_TRUE(bus.interrupt_requested(Interrupt::Timer));
+    EXPECT_FALSE(bus.interrupt_requested(Interrupt::Serial));
+}
+
+TEST(Bus, AcknowledgingClearsOnlyThatSource) {
+    Bus bus;
+    bus.write8(Bus::kInterruptFlag, 0x1F);
+    bus.acknowledge_interrupt(Interrupt::Timer);
+    EXPECT_EQ(bus.read8(Bus::kInterruptFlag), 0xFB);
+}
+
+TEST(Bus, AnInterruptIsPendingOnlyWhenRequestedAndEnabled) {
+    Bus bus;
+    bus.write8(Bus::kInterruptFlag, 0x00);
+    bus.request_interrupt(Interrupt::Timer);
+    EXPECT_EQ(bus.pending_interrupts(), 0x00);
+
+    bus.write8(Bus::kInterruptEnable, 0x01);
+    EXPECT_EQ(bus.pending_interrupts(), 0x00);
+
+    bus.write8(Bus::kInterruptEnable, 0x05);
+    EXPECT_EQ(bus.pending_interrupts(), 0x04);
+}
+
+TEST(Bus, UnusedEnableBitsNeverMakeAnInterruptPending) {
+    Bus bus;
+    bus.write8(Bus::kInterruptFlag, 0x00);
+    bus.write8(Bus::kInterruptEnable, 0xE0);
+    EXPECT_EQ(bus.pending_interrupts(), 0x00);
 }
 
 }  // namespace

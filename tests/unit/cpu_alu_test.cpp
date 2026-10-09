@@ -265,12 +265,30 @@ constexpr std::uint8_t to_bcd(int value) {
     return static_cast<std::uint8_t>(((value / 10) << 4) | (value % 10));
 }
 
-TEST(CpuDaa, FixesEveryTwoDigitDecimalAddition) {
+// Runs `opcode y ; DAA` with A = x and returns the machine afterwards. The
+// program lives in work RAM so that one machine can be reused for all 10,000
+// combinations by rewriting a single operand byte.
+class CpuDaaExhaustive : public testing::Test {
+protected:
+    static constexpr std::uint16_t kProgram = 0xC000;
+
+    void run(std::uint8_t opcode, int x, int y) {
+        m.bus.write8(kProgram, opcode);
+        m.bus.write8(kProgram + 1, to_bcd(y));
+        m.bus.write8(kProgram + 2, 0x27);  // DAA
+        m.reg().a = to_bcd(x);
+        m.reg().f = 0x00;
+        m.reg().pc = kProgram;
+        m.run(2);
+    }
+
+    Machine m{0x00};
+};
+
+TEST_F(CpuDaaExhaustive, FixesEveryTwoDigitDecimalAddition) {
     for (int x = 0; x < 100; ++x) {
         for (int y = 0; y < 100; ++y) {
-            Machine m({kAddN, to_bcd(y), 0x27});  // ADD A, y ; DAA
-            m.reg().a = to_bcd(x);
-            m.run(2);
+            run(kAddN, x, y);
             ASSERT_EQ(m.reg().a, to_bcd((x + y) % 100)) << x << " + " << y;
             ASSERT_EQ(m.reg().flag(Flag::C), x + y > 99) << x << " + " << y;
             ASSERT_EQ(m.reg().flag(Flag::Z), (x + y) % 100 == 0) << x << " + " << y;
@@ -279,12 +297,10 @@ TEST(CpuDaa, FixesEveryTwoDigitDecimalAddition) {
     }
 }
 
-TEST(CpuDaa, FixesEveryTwoDigitDecimalSubtraction) {
+TEST_F(CpuDaaExhaustive, FixesEveryTwoDigitDecimalSubtraction) {
     for (int x = 0; x < 100; ++x) {
         for (int y = 0; y < 100; ++y) {
-            Machine m({kSubN, to_bcd(y), 0x27});  // SUB A, y ; DAA
-            m.reg().a = to_bcd(x);
-            m.run(2);
+            run(kSubN, x, y);
             ASSERT_EQ(m.reg().a, to_bcd((x - y + 100) % 100)) << x << " - " << y;
             ASSERT_EQ(m.reg().flag(Flag::C), x < y) << x << " - " << y;
             ASSERT_TRUE(m.reg().flag(Flag::N));

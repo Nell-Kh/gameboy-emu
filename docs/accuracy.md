@@ -1,7 +1,7 @@
 # Accuracy
 
 What has been checked against real-hardware test ROMs, and what is known to be simplified.
-Everything in the first table runs in CI on every push (gcc and clang on Linux, clang on macOS,
+Everything in the tables under "Test ROMs that pass" runs in CI on every push (gcc and clang on Linux, clang on macOS,
 with AddressSanitizer and UndefinedBehaviorSanitizer).
 
 ## Test ROMs that pass
@@ -23,6 +23,15 @@ Blargg's `cpu_instrs`, individual ROMs, from
 | `10-bit ops` | BIT, RES and SET on registers | Passed |
 | `11-op a,(hl)` | the same operations on memory at HL | Passed |
 
+Blargg's timing ROMs, from the same repository:
+
+| ROM | What it covers | Result |
+|---|---|---|
+| `instr_timing` | the duration of every instruction, measured with the timer | Passed |
+| `mem_timing/01-read_timing` | the machine cycle in which each instruction reads memory | Passed |
+| `mem_timing/02-write_timing` | the machine cycle in which each instruction writes memory | Passed |
+| `mem_timing/03-modify_timing` | the read and the write of read-modify-write instructions | Passed |
+
 To reproduce one by hand:
 
 ```
@@ -32,8 +41,7 @@ To reproduce one by hand:
 ## Not yet tested in CI
 
 - The combined `cpu_instrs.gb` (needs MBC1 bank switching, M2).
-- `instr_timing` and `mem_timing`. They print "Passed" when run by hand with `--headless`, but
-  they are not CI tests yet, so they are not claimed (M2).
+- The combined `mem_timing.gb` (the three individual ROMs above cover the same checks).
 - Mooneye's timer and interrupt tests. None has been run.
 - Anything involving the screen or sound (M3, M5).
 

@@ -1,7 +1,7 @@
-// Integration tests: run Blargg's CPU test ROMs on the whole machine.
+// Integration tests: run Blargg's test ROMs on the whole machine.
 //
-// Each ROM exercises one group of instructions on real-hardware-verified
-// expectations and prints "Passed" or "Failed" over the serial port. Nothing
+// Each ROM checks one area against expectations verified on real hardware and
+// prints "Passed" or "Failed" over the serial port. Nothing
 // here knows what the right answers are; the ROM does.
 
 #include <gtest/gtest.h>
@@ -73,6 +73,17 @@ INSTANTIATE_TEST_SUITE_P(
                     Rom{"09_op_r_r", "cpu_instrs/individual/09-op r,r.gb"},
                     Rom{"10_bit_ops", "cpu_instrs/individual/10-bit ops.gb"},
                     Rom{"11_op_a_hl", "cpu_instrs/individual/11-op a,(hl).gb"}),
+    [](const testing::TestParamInfo<Rom>& info) { return std::string(info.param.test_name); });
+
+// instr_timing measures how long every instruction takes, using the timer.
+// mem_timing checks in which machine cycle of an instruction each memory read
+// and write happens. Both depend on the CPU ticking the bus per access (ADR-005).
+INSTANTIATE_TEST_SUITE_P(
+    Timing, BlarggRom,
+    testing::Values(Rom{"instr_timing", "instr_timing/instr_timing.gb"},
+                    Rom{"mem_timing_01_read", "mem_timing/individual/01-read_timing.gb"},
+                    Rom{"mem_timing_02_write", "mem_timing/individual/02-write_timing.gb"},
+                    Rom{"mem_timing_03_modify", "mem_timing/individual/03-modify_timing.gb"}),
     [](const testing::TestParamInfo<Rom>& info) { return std::string(info.param.test_name); });
 
 }  // namespace

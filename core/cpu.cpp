@@ -1,5 +1,7 @@
 #include "core/cpu.h"
 
+#include <bit>
+
 namespace core {
 
 namespace {
@@ -14,12 +16,74 @@ Cpu::Cpu(Bus& bus) noexcept : bus_(bus) {}
 
 std::uint32_t Cpu::step() {
     const std::uint64_t start = bus_.cycles();
-    if (locked_ || halted_) {
-        internal_cycle();
-    } else {
-        execute(fetch8());
-    }
+    run_one_step();
     return static_cast<std::uint32_t>(bus_.cycles() - start);
+}
+
+void Cpu::run_one_step() {
+    if (locked_) {
+        internal_cycle();
+        return;
+    }
+    if (stopped_) {
+        if (!bus_.interrupt_requested(Interrupt::Joypad)) {
+            internal_cycle();
+            return;
+        }
+        stopped_ = false;
+    }
+    if (halted_) {
+        // HALT ends as soon as an enabled interrupt is requested, even if IME
+        // is off. With IME off the CPU simply carries on after the HALT.
+        if (bus_.pending_interrupts() == 0) {
+            internal_cycle();
+            return;
+        }
+        halted_ = false;
+    }
+    if (ime_ == Ime::Enabled && bus_.pending_interrupts() != 0) {
+        service_interrupt();
+        return;
+    }
+
+    // An EI from the previous instruction takes effect after this one.
+    const bool enable_after = ime_ == Ime::Pending;
+
+    const std::uint8_t opcode = read8(reg_.pc);
+    if (repeat_next_byte_) {
+        repeat_next_byte_ = false;
+    } else {
+        ++reg_.pc;
+    }
+    execute(opcode);
+
+    // Unless that instruction was DI, which cancels it.
+    if (enable_after && ime_ == Ime::Pending) {
+        ime_ = Ime::Enabled;
+    }
+}
+
+// Five machine cycles: two internal, two to push PC, one to load the new PC.
+void Cpu::service_interrupt() {
+    ime_ = Ime::Disabled;
+    internal_cycle();
+    internal_cycle();
+    push16(reg_.pc);
+
+    // The source is chosen only now. If pushing PC happened to overwrite IE
+    // (the stack can point at 0xFFFF) and nothing is pending any more, the
+    // hardware jumps to address 0 instead.
+    const std::uint8_t pending = bus_.pending_interrupts();
+    if (pending == 0) {
+        reg_.pc = 0x0000;
+    } else {
+        // Lowest set bit = highest priority. Handlers are 8 bytes apart,
+        // starting at 0x0040.
+        const int index = std::countr_zero(pending);
+        bus_.acknowledge_interrupt(static_cast<Interrupt>(1U << static_cast<unsigned>(index)));
+        reg_.pc = static_cast<std::uint16_t>(0x0040 + 8 * index);
+    }
+    internal_cycle();
 }
 
 Registers& Cpu::registers() noexcept {
@@ -38,8 +102,12 @@ bool Cpu::halted() const noexcept {
     return halted_;
 }
 
+bool Cpu::stopped() const noexcept {
+    return stopped_;
+}
+
 bool Cpu::interrupts_enabled() const noexcept {
-    return ime_;
+    return ime_ == Ime::Enabled;
 }
 
 // --- Bus access ---
@@ -389,9 +457,10 @@ void Cpu::ret_if(bool condition) noexcept {
     }
 }
 
+// Unlike EI, RETI enables interrupts immediately.
 void Cpu::reti() noexcept {
     ret();
-    ime_ = true;
+    ime_ = Ime::Enabled;
 }
 
 void Cpu::rst(std::uint16_t vector) {
@@ -403,21 +472,35 @@ void Cpu::rst(std::uint16_t vector) {
 // --- CPU control ---
 
 void Cpu::halt() noexcept {
-    halted_ = true;
+    if (ime_ == Ime::Disabled && bus_.pending_interrupts() != 0) {
+        // The HALT bug: with IME off and an interrupt already pending, the CPU
+        // does not halt, and it fails to advance PC on the next fetch. The byte
+        // after HALT is therefore read twice.
+        repeat_next_byte_ = true;
+    } else {
+        halted_ = true;
+    }
 }
 
-// STOP is two bytes long; the second one is ignored.
-void Cpu::stop() noexcept {
+// STOP is two bytes long; the second one is ignored. It also resets DIV.
+// The CPU then sleeps until a button is pressed.
+//
+// Known simplification: on hardware the clock itself stops, so the timer
+// freezes too. Here time keeps passing while stopped.
+void Cpu::stop() {
     ++reg_.pc;
-    halted_ = true;
+    bus_.write8(Timer::kDiv, 0x00);
+    stopped_ = true;
 }
 
 void Cpu::di() noexcept {
-    ime_ = false;
+    ime_ = Ime::Disabled;
 }
 
 void Cpu::ei() noexcept {
-    ime_ = true;
+    if (ime_ == Ime::Disabled) {
+        ime_ = Ime::Pending;
+    }
 }
 
 }  // namespace core

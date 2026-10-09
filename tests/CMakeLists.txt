@@ -15,6 +15,7 @@ add_executable(unit_tests
   unit/cpu_alu_test.cpp
   unit/cpu_bits_test.cpp
   unit/cpu_flow_test.cpp
+  unit/cpu_interrupt_test.cpp
   unit/cpu_load_test.cpp
   unit/cpu_opcode_table_test.cpp
   unit/cpu_test.cpp

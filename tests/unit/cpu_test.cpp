@@ -22,6 +22,7 @@ TEST(Cpu, StartsInPostBootState) {
     EXPECT_EQ(cpu.registers().af(), 0x01B0);
     EXPECT_FALSE(cpu.locked());
     EXPECT_FALSE(cpu.halted());
+    EXPECT_FALSE(cpu.stopped());
     EXPECT_FALSE(cpu.interrupts_enabled());
 }
 

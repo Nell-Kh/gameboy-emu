@@ -33,13 +33,25 @@ public:
     // freezes on them; a locked CPU only burns time.
     [[nodiscard]] bool locked() const noexcept;
 
-    // True while the CPU sleeps after HALT.
+    // True while the CPU sleeps after HALT, waiting for an interrupt.
     [[nodiscard]] bool halted() const noexcept;
 
+    // True while the CPU sleeps after STOP, waiting for a button press.
+    [[nodiscard]] bool stopped() const noexcept;
+
     // The interrupt master enable flag (IME), set by EI and cleared by DI.
+    // While it is off, interrupts stay requested but are not serviced.
     [[nodiscard]] bool interrupts_enabled() const noexcept;
 
 private:
+    // EI does not take effect at once: the instruction after it still runs
+    // with interrupts off. Pending is that in-between state.
+    enum class Ime : std::uint8_t { Disabled, Pending, Enabled };
+
+    void run_one_step();
+    // Jumps to the handler of the highest-priority pending interrupt.
+    void service_interrupt();
+
     // --- Bus access. Each of these is one machine cycle. ---
     [[nodiscard]] std::uint8_t read8(std::uint16_t address) noexcept;
     void write8(std::uint16_t address, std::uint8_t value);
@@ -126,15 +138,18 @@ private:
 
     // CPU control.
     void halt() noexcept;
-    void stop() noexcept;
+    void stop();
     void di() noexcept;
     void ei() noexcept;
 
     Bus& bus_;
     Registers reg_ = Registers::post_boot_dmg();
-    bool ime_ = false;
+    Ime ime_ = Ime::Disabled;
     bool halted_ = false;
+    bool stopped_ = false;
     bool locked_ = false;
+    // Set by the HALT bug: the next opcode fetch does not advance PC.
+    bool repeat_next_byte_ = false;
 };
 
 }  // namespace core

@@ -32,6 +32,23 @@ Blargg's timing ROMs, from the same repository:
 | `mem_timing/02-write_timing` | the machine cycle in which each instruction writes memory | Passed |
 | `mem_timing/03-modify_timing` | the read and the write of read-modify-write instructions | Passed |
 
+[Mooneye Test Suite](https://github.com/Gekkio/mooneye-test-suite), prebuilt, from
+[c-sp/game-boy-test-roms](https://github.com/c-sp/game-boy-test-roms) release `v7.0`:
+
+| ROM | What it covers | Result |
+|---|---|---|
+| `timer/div_write` | writing DIV resets the internal counter | Passed |
+| `timer/rapid_toggle` | toggling the timer on and off, and the extra counts it causes | Passed |
+| `timer/tim00`, `tim01`, `tim10`, `tim11` | TIMA at each of the four rates | Passed |
+| `timer/tim00_div_trigger` and the other three `_div_trigger` | the extra count when a DIV write makes the watched bit fall | Passed |
+| `timer/tima_reload` | the one-cycle delay between overflow and reload | Passed |
+| `timer/tima_write_reloading` | writing TIMA during and right after the reload | Passed |
+| `timer/tma_write_reloading` | writing TMA during the reload | Passed |
+| `ei_sequence`, `ei_timing`, `rapid_di_ei` | the one-instruction delay of EI, and DI cancelling it | Passed |
+| `intr_timing` | the duration of an interrupt dispatch | Passed |
+| `if_ie_registers` | IF and IE behaviour, including the unused bits | Passed |
+| `interrupts/ie_push` | dispatch cancelled when pushing PC overwrites IE | Passed |
+
 To reproduce one by hand:
 
 ```
@@ -42,7 +59,12 @@ To reproduce one by hand:
 
 - The combined `cpu_instrs.gb` (needs MBC1 bank switching, M2).
 - The combined `mem_timing.gb` (the three individual ROMs above cover the same checks).
-- Mooneye's timer and interrupt tests. None has been run.
+- Other Mooneye acceptance tests. These were run by hand and do not pass yet:
+  - `call_timing`, `jp_timing`, `ret_timing`, `reti_timing`, `push_timing`, `add_sp_e_timing`,
+    `ld_hl_sp_e_timing`: they measure timing with OAM DMA, which is not implemented (M2).
+  - `halt_ime0_ei`, `halt_ime0_nointr_timing`, `halt_ime1_timing2-GS`: they do not use OAM DMA but
+    do read PPU registers; the cause has not been investigated yet.
+- No other Mooneye test has been run.
 - Anything involving the screen or sound (M3, M5).
 
 ## Known simplifications
@@ -59,8 +81,9 @@ that is a bug in this document.
   and then returns *to* the HALT, halting again. Here it returns to the instruction after it.
 - **Waking from HALT** costs no extra time. Hardware timing around the wake-up cycle is not
   modelled.
-- **Interrupt dispatch** takes a fixed 20 ticks. The one mid-dispatch effect that is modelled is
-  the push overwriting IE (the jump goes to `0x0000`); other cancellation cases are not.
+- **Interrupt dispatch** takes 20 ticks and is checked after the opcode fetch (ADR-009). The one
+  mid-dispatch effect that is modelled is the high-byte push overwriting IE (the jump goes to
+  `0x0000`); other cancellation cases are not.
 - **Undefined opcodes** (the 11 unused encodings) lock the CPU, which only burns time afterwards.
   This matches hardware, where they hang the CPU until power-off. It is listed because it is not
   verified by a test ROM, only by unit tests.
@@ -71,14 +94,23 @@ that is a bug in this document.
   between overflow and reload, a TIMA write during that delay cancelling the reload, a TIMA write
   in the reload cycle being ignored, a TMA write in the reload cycle reaching TIMA, and the extra
   count when a DIV or TAC write makes the watched bit fall.
-- Verified only by unit tests written from the documented behaviour, plus `02-interrupts`. No
-  Mooneye timer test has been run, so the edge cases above are unconfirmed against hardware.
+- Verified by unit tests and by all 13 Mooneye timer tests listed above.
 - Writes land on machine-cycle boundaries; nothing finer than 4 ticks is modelled.
 
 **Serial**
 
 - Internal clock only, at the fixed DMG rate. Nothing is ever connected, so every transfer
   shifts in `0xFF`, and a transfer waiting on an external clock never completes.
+
+**PPU (only the line clock exists, ADR-010)**
+
+- LY advances one line every 456 ticks through lines 0-153 while the LCD is on and is 0 while it
+  is off. Not modelled: the PPU modes and their timing, line 153 reading as 0 early, LY=LYC and
+  the STAT register.
+- LCDC is a plain read-write register; none of its bits except "LCD on" has any effect yet.
+- At power-on the LCD is on and LY starts at line 0. The exact line position the real boot ROM
+  leaves behind is not modelled.
+- No rendering, no PPU interrupts (VBlank, STAT), no video-memory access rules.
 
 **Memory and I/O**
 
@@ -87,7 +119,7 @@ that is a bug in this document.
 - **OAM DMA** (`0xFF46`) is not implemented. Writing to it does nothing but store the byte.
 - **Cartridges:** only the first 32 KiB of a ROM are visible. There is no mapper, no cartridge
   RAM, and writes to the ROM region are ignored.
-- **I/O registers:** only SB, SC, DIV, TIMA, TMA, TAC, IF and IE behave like hardware, including
-  their unused bits reading as 1. Every other register, the joypad at `0xFF00` included, is plain
+- **I/O registers:** only SB, SC, DIV, TIMA, TMA, TAC, LCDC, LY, IF and IE behave like hardware,
+  including their unused bits reading as 1. Every other register, the joypad at `0xFF00` included, is plain
   memory that starts at 0, not at its post-boot value, and has no write-only or unused bits.
 - **Boot ROM:** not run. The CPU registers, DIV and IF start at their post-boot values.

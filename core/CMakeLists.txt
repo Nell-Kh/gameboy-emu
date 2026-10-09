@@ -4,6 +4,7 @@ add_library(core STATIC
   cpu.cpp
   gameboy.cpp
   opcodes.gen.cpp
+  ppu.cpp
   serial.cpp
   timer.cpp
 )

@@ -1,8 +1,8 @@
-// Integration tests: run Blargg's test ROMs on the whole machine.
+// Integration tests: run hardware test ROMs on the whole machine.
 //
 // Each ROM checks one area against expectations verified on real hardware and
-// prints "Passed" or "Failed" over the serial port. Nothing
-// here knows what the right answers are; the ROM does.
+// reports the verdict itself: Blargg's over the serial port, Mooneye's in the
+// CPU registers. Nothing here knows what the right answers are; the ROM does.
 
 #include <gtest/gtest.h>
 
@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "core/gameboy.h"
+#include "core/registers.h"
 
 namespace {
 
@@ -85,5 +86,72 @@ INSTANTIATE_TEST_SUITE_P(
                     Rom{"mem_timing_02_write", "mem_timing/individual/02-write_timing.gb"},
                     Rom{"mem_timing_03_modify", "mem_timing/individual/03-modify_timing.gb"}),
     [](const testing::TestParamInfo<Rom>& info) { return std::string(info.param.test_name); });
+
+// --- Mooneye Test Suite -------------------------------------------------
+//
+// A Mooneye test ends by executing LD B, B (opcode 0x40), used as a breakpoint.
+// It passed if the registers then hold the Fibonacci numbers 3, 5, 8, 13, 21,
+// 34 in B, C, D, E, H, L. Mooneye allows each test 120 emulated seconds.
+
+constexpr std::uint8_t kMooneyeBreakpoint = 0x40;
+constexpr std::uint64_t kMooneyeMaxTicks = 120 * core::GameBoy::kTicksPerSecond;
+
+class MooneyeRom : public testing::TestWithParam<Rom> {};
+
+TEST_P(MooneyeRom, EndsWithTheFibonacciRegisters) {
+    const std::string path = std::string(GB_MOONEYE_DIR) + "/" + GetParam().path;
+    const std::vector<std::uint8_t> rom = read_rom(path);
+    ASSERT_FALSE(rom.empty()) << "cannot read " << path;
+
+    core::GameBoy gb;
+    gb.load_rom(rom);
+
+    bool finished = false;
+    while (!finished && gb.cycles() < kMooneyeMaxTicks && !gb.cpu().locked()) {
+        const core::Registers& r = gb.cpu().registers();
+        finished = !gb.cpu().halted() && gb.bus().read8(r.pc) == kMooneyeBreakpoint;
+        if (!finished) {
+            gb.step();
+        }
+    }
+
+    const core::Registers& r = gb.cpu().registers();
+    ASSERT_TRUE(finished) << "no breakpoint after " << gb.cycles() << " ticks"
+                          << (gb.cpu().locked() ? " (CPU locked)" : "");
+    EXPECT_EQ(r.b, 3);
+    EXPECT_EQ(r.c, 5);
+    EXPECT_EQ(r.d, 8);
+    EXPECT_EQ(r.e, 13);
+    EXPECT_EQ(r.h, 21);
+    EXPECT_EQ(r.l, 34);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Timer, MooneyeRom,
+    testing::Values(Rom{"div_write", "acceptance/timer/div_write.gb"},
+                    Rom{"rapid_toggle", "acceptance/timer/rapid_toggle.gb"},
+                    Rom{"tim00", "acceptance/timer/tim00.gb"},
+                    Rom{"tim00_div_trigger", "acceptance/timer/tim00_div_trigger.gb"},
+                    Rom{"tim01", "acceptance/timer/tim01.gb"},
+                    Rom{"tim01_div_trigger", "acceptance/timer/tim01_div_trigger.gb"},
+                    Rom{"tim10", "acceptance/timer/tim10.gb"},
+                    Rom{"tim10_div_trigger", "acceptance/timer/tim10_div_trigger.gb"},
+                    Rom{"tim11", "acceptance/timer/tim11.gb"},
+                    Rom{"tim11_div_trigger", "acceptance/timer/tim11_div_trigger.gb"},
+                    Rom{"tima_reload", "acceptance/timer/tima_reload.gb"},
+                    Rom{"tima_write_reloading", "acceptance/timer/tima_write_reloading.gb"},
+                    Rom{"tma_write_reloading", "acceptance/timer/tma_write_reloading.gb"}),
+    [](const testing::TestParamInfo<Rom>& info) { return std::string(info.param.test_name); });
+
+INSTANTIATE_TEST_SUITE_P(Interrupts, MooneyeRom,
+                         testing::Values(Rom{"ei_sequence", "acceptance/ei_sequence.gb"},
+                                         Rom{"ei_timing", "acceptance/ei_timing.gb"},
+                                         Rom{"rapid_di_ei", "acceptance/rapid_di_ei.gb"},
+                                         Rom{"intr_timing", "acceptance/intr_timing.gb"},
+                                         Rom{"if_ie_registers", "acceptance/if_ie_registers.gb"},
+                                         Rom{"ie_push", "acceptance/interrupts/ie_push.gb"}),
+                         [](const testing::TestParamInfo<Rom>& info) {
+                             return std::string(info.param.test_name);
+                         });
 
 }  // namespace

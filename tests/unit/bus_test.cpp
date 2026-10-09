@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "core/interrupts.h"
+#include "core/ppu.h"
 #include "core/serial.h"
 #include "core/timer.h"
 #include "test_rom.h"
@@ -190,6 +191,15 @@ TEST(Bus, TimerOverflowRaisesTheTimerInterrupt) {
     EXPECT_FALSE(bus.interrupt_requested(Interrupt::Timer));
     bus.tick(4);
     EXPECT_TRUE(bus.interrupt_requested(Interrupt::Timer));
+}
+
+TEST(Bus, LyIsRoutedToThePpuAndAdvancesWithTime) {
+    Bus bus;
+    EXPECT_EQ(bus.read8(core::Ppu::kLy), 0x00);
+    bus.tick(core::Ppu::kTicksPerLine * 3);
+    EXPECT_EQ(bus.read8(core::Ppu::kLy), 3);
+    bus.write8(core::Ppu::kLy, 0x55);
+    EXPECT_EQ(bus.read8(core::Ppu::kLy), 3);
 }
 
 }  // namespace

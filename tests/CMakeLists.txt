@@ -20,6 +20,7 @@ add_executable(unit_tests
   unit/cpu_opcode_table_test.cpp
   unit/cpu_test.cpp
   unit/gameboy_test.cpp
+  unit/ppu_test.cpp
   unit/registers_test.cpp
   unit/serial_test.cpp
   unit/smoke_test.cpp
@@ -43,8 +44,9 @@ if(Python3_Interpreter_FOUND)
 endif()
 
 # --- Test ROMs -------------------------------------------------------------
-# Blargg's hardware test ROMs are the reference for CPU correctness. They are
-# downloaded at a pinned commit instead of being committed here (ADR-007).
+# Blargg's and Mooneye's hardware test ROMs are the reference for correctness.
+# They are downloaded at pinned versions instead of being committed here
+# (ADR-007, ADR-011).
 # Configure with -DGB_FETCH_TEST_ROMS=OFF to build without network access.
 if(GB_FETCH_TEST_ROMS)
   FetchContent_Declare(
@@ -54,10 +56,22 @@ if(GB_FETCH_TEST_ROMS)
   )
   FetchContent_MakeAvailable(gb_test_roms)
 
+  # Prebuilt Mooneye Test Suite ROMs, from c-sp's collection (ADR-011).
+  FetchContent_Declare(
+    csp_test_roms
+    URL https://github.com/c-sp/game-boy-test-roms/releases/download/v7.0/game-boy-test-roms-v7.0.zip
+    URL_HASH SHA256=b9a9d7a1075aa35a3d07c07c34974048672d8520dca9e07a50178f5860c3832c
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+  )
+  FetchContent_MakeAvailable(csp_test_roms)
+
   add_executable(rom_tests
     test_roms.cpp
   )
-  target_compile_definitions(rom_tests PRIVATE GB_TEST_ROM_DIR="${gb_test_roms_SOURCE_DIR}")
+  target_compile_definitions(rom_tests PRIVATE
+    GB_TEST_ROM_DIR="${gb_test_roms_SOURCE_DIR}"
+    GB_MOONEYE_DIR="${csp_test_roms_SOURCE_DIR}/mooneye-test-suite"
+  )
   target_link_libraries(rom_tests PRIVATE gb::core GTest::gtest_main gb_warnings)
   gtest_discover_tests(rom_tests)
 

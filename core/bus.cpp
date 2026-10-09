@@ -27,6 +27,9 @@ std::uint8_t Bus::read8(std::uint16_t address) const noexcept {
         case Timer::kTma:
         case Timer::kTac:
             return timer_.read(address);
+        case Ppu::kLcdc:
+        case Ppu::kLy:
+            return ppu_.read(address);
         case kInterruptFlag:
             // The top three bits do not exist and read as 1.
             return static_cast<std::uint8_t>(interrupt_flag_ | ~kInterruptBits);
@@ -54,6 +57,10 @@ void Bus::write8(std::uint16_t address, std::uint8_t value) {
         case Timer::kTac:
             timer_.write(address, value);
             break;
+        case Ppu::kLcdc:
+        case Ppu::kLy:
+            ppu_.write(address, value);
+            break;
         case kInterruptFlag:
             interrupt_flag_ = value & kInterruptBits;
             break;
@@ -68,6 +75,7 @@ void Bus::write8(std::uint16_t address, std::uint8_t value) {
 
 void Bus::tick(std::uint32_t t_cycles) noexcept {
     cycles_ += t_cycles;
+    ppu_.tick(t_cycles);
     if (timer_.tick(t_cycles)) {
         request_interrupt(Interrupt::Timer);
     }

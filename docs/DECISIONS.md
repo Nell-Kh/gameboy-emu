@@ -103,3 +103,42 @@ record that supersedes the old one, not by editing history.
   group directly. What is not yet exercised is bank switching, which M1 does not claim.
   The timer and the tick-before-access order chosen in ADR-005 are exercised here by
   `02-interrupts`, which fails without a working timer interrupt.
+
+## ADR-009: Interrupts are checked after the opcode fetch cycle
+
+- **Context:** Up to M1 the CPU checked for a pending interrupt before fetching the next opcode.
+  Mooneye's `rapid_toggle` showed this is one instruction late in one case: when an interrupt
+  request arrives during the fetch cycle itself. On hardware the opcode fetch overlaps the end of
+  the previous instruction and the check comes after it, so such a request is still serviced
+  first.
+- **Decision:** `step()` fetches the opcode (one machine cycle, as before) and only then checks
+  IME and the pending interrupts. If one is serviced, the fetched opcode is discarded and PC is
+  not advanced; that fetch counts as the first of the dispatch's five machine cycles, so dispatch
+  still takes 20 ticks in total. The interrupt source is now chosen between the two pushes of PC,
+  as on hardware, not after both.
+- **Consequences:** `rapid_toggle` and `ie_push` pass, and nothing that passed before broke. Two
+  unit tests pin the behaviour: a request landing exactly at the end of a fetch, and a low-byte
+  push onto IE that must not cancel the dispatch.
+
+## ADR-010: LY counts scanlines before the PPU exists
+
+- **Context:** Mooneye's test ROMs switch the screen off safely before reporting a result, which
+  means waiting for LY (the current scanline, `0xFF44`) to reach the vertical blank. With LY stuck
+  at 0 every one of them hangs, whatever its verdict.
+- **Decision:** Add `core/ppu.{h,cpp}` with only the line clock: LCDC (`0xFF40`) as a plain
+  register, and LY advancing one line every 456 ticks through lines 0-153 while the LCD is on,
+  reset to 0 while it is off. Writes to LY are ignored. Rendering, STAT, the PPU interrupts and
+  video-memory access rules stay in M3, and they will grow from this class.
+- **Consequences:** Mooneye tests can run now. LY is right to the line but has none of the finer
+  hardware behaviour (mode timing, the short line 153, LY=LYC), which `docs/accuracy.md` lists.
+
+## ADR-011: Mooneye ROMs come from c-sp's prebuilt collection
+
+- **Context:** The Mooneye Test Suite (MIT) is published as assembly source; building it needs the
+  WLA DX assembler. c-sp's [game-boy-test-roms](https://github.com/c-sp/game-boy-test-roms) (MIT)
+  publishes it prebuilt, alongside other suites.
+- **Decision:** CMake downloads release `v7.0` of that collection as a zip, pinned by SHA-256, and
+  the tests use its `mooneye-test-suite/` folder. Blargg stays on its own pinned source
+  (ADR-007).
+- **Consequences:** No assembler in CI and no ROM in this repository. The Mooneye build in v7.0
+  dates from 2022; newer upstream changes are not picked up until the pin is moved.

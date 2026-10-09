@@ -185,6 +185,44 @@ TEST(CpuInterrupt, IfPushingPcOverwritesIeTheCpuJumpsToZero) {
     EXPECT_TRUE(m.bus.interrupt_requested(Interrupt::Timer));
 }
 
+TEST(CpuInterrupt, PushingTheLowByteOntoIeDoesNotCancelTheDispatch) {
+    // SP = 0x0001: the high byte goes to 0x0000 (ROM, ignored) and the low
+    // byte to 0xFFFF (IE). The source was already chosen between the pushes.
+    Machine m({kEi, kNop});
+    set_interrupts(m, 0x04);
+    enable_ime(m);
+    m.reg().sp = 0x0001;
+    m.bus.request_interrupt(Interrupt::Timer);
+
+    EXPECT_EQ(m.step(), 20U);
+    EXPECT_EQ(m.reg().pc, 0x0050);
+    EXPECT_FALSE(m.bus.interrupt_requested(Interrupt::Timer));
+}
+
+TEST(CpuInterrupt, ARequestDuringTheOpcodeFetchIsServicedBeforeThatInstruction) {
+    // EI ; NOP brings IME on at tick 8. The timer is then reset so that TIMA
+    // overflows at tick 8 + 16 = 24 and requests its interrupt at tick 28:
+    // exactly at the end of the fetch cycle of the instruction at 0x0106.
+    Machine m({kEi, kNop, kNop, kNop, kNop, kNop, kIncA});
+    set_interrupts(m, 0x04);
+    m.reg().sp = 0xD000;
+    m.reg().a = 0;
+    enable_ime(m);
+    ASSERT_EQ(m.bus.cycles(), 8U);
+    m.bus.write8(core::Timer::kDiv, 0x00);
+    m.bus.write8(core::Timer::kTima, 0xFF);
+    m.bus.write8(core::Timer::kTac, 0x05);
+
+    m.run(4);  // the NOPs at 0x0102-0x0105, ending at tick 24
+    ASSERT_EQ(m.bus.cycles(), 24U);
+    EXPECT_EQ(m.step(), 20U);
+
+    // The NOP at 0x0106 was fetched but not executed: it is the return address.
+    EXPECT_EQ(m.reg().pc, 0x0050);
+    EXPECT_EQ(m.bus.read8(0xCFFF), 0x01);
+    EXPECT_EQ(m.bus.read8(0xCFFE), 0x06);
+}
+
 TEST(CpuHalt, SleepsUntilAnInterruptIsRequested) {
     Machine m({kHalt, kIncA});
     set_interrupts(m, 0x04);

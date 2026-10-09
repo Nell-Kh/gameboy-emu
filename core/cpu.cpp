@@ -41,15 +41,17 @@ void Cpu::run_one_step() {
         }
         halted_ = false;
     }
+    // An EI from the previous instruction takes effect after this one.
+    const bool enable_after = ime_ == Ime::Pending;
+
+    // Interrupts are checked after the opcode fetch, so a request that arrives
+    // during the fetch cycle is still serviced before this instruction runs
+    // (ADR-009). The fetched opcode is then discarded and PC stays put.
+    const std::uint8_t opcode = read8(reg_.pc);
     if (ime_ == Ime::Enabled && bus_.pending_interrupts() != 0) {
         service_interrupt();
         return;
     }
-
-    // An EI from the previous instruction takes effect after this one.
-    const bool enable_after = ime_ == Ime::Pending;
-
-    const std::uint8_t opcode = read8(reg_.pc);
     if (repeat_next_byte_) {
         repeat_next_byte_ = false;
     } else {
@@ -63,17 +65,19 @@ void Cpu::run_one_step() {
     }
 }
 
-// Five machine cycles: two internal, two to push PC, one to load the new PC.
+// Five machine cycles in all. The first is the discarded opcode fetch that
+// run_one_step has already made; then one internal cycle, two to push PC and
+// one to load the handler address.
 void Cpu::service_interrupt() {
     ime_ = Ime::Disabled;
     internal_cycle();
-    internal_cycle();
-    push16(reg_.pc);
+    write8(--reg_.sp, static_cast<std::uint8_t>(reg_.pc >> 8U));
 
-    // The source is chosen only now. If pushing PC happened to overwrite IE
-    // (the stack can point at 0xFFFF) and nothing is pending any more, the
-    // hardware jumps to address 0 instead.
+    // The source is chosen between the two pushes. If the high byte landed on
+    // IE (SP was 0x0000) and nothing is pending any more, the dispatch is
+    // cancelled and the CPU jumps to address 0 instead.
     const std::uint8_t pending = bus_.pending_interrupts();
+    write8(--reg_.sp, static_cast<std::uint8_t>(reg_.pc & 0xFFU));
     if (pending == 0) {
         reg_.pc = 0x0000;
     } else {

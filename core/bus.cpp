@@ -20,4 +20,12 @@ bool Bus::load(std::span<const std::uint8_t> bytes, std::uint16_t address) noexc
     return true;
 }
 
+void Bus::tick(std::uint32_t t_cycles) noexcept {
+    cycles_ += t_cycles;
+}
+
+std::uint64_t Bus::cycles() const noexcept {
+    return cycles_;
+}
+
 }  // namespace core

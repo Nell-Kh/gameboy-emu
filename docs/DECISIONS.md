@@ -42,3 +42,19 @@ record that supersedes the old one, not by editing history.
   finding.
 - **Consequences:** Test runs are slower than a plain build, which does not matter at this size.
   The `release` preset stays unsanitized for real use and for measuring speed.
+
+## ADR-005: The CPU ticks the machine on every memory access
+
+- **Context:** The original plan was for `step()` to run a whole instruction and for the
+  scheduler to advance the timer, PPU and APU afterwards by the returned cycle count. That is
+  instruction-level accuracy. Blargg `mem_timing`, which is on the must-pass list, checks at which
+  machine cycle *inside* an instruction each read and write happens, so that model cannot pass it.
+- **Decision:** One machine cycle is 4 clock ticks, and the CPU does at most one memory access per
+  machine cycle. Every CPU read, write and internal cycle first calls `Bus::tick(4)`, then does the
+  access. `step()` still returns the instruction's total, measured from the bus clock. This
+  supersedes the "CPU design" row of the project brief.
+- **Consequences:** Accuracy is machine-cycle level: components see each access at the cycle it
+  happens. The cost is one function call per access and no separate scheduler loop. Instruction
+  lengths are no longer a table to maintain; they fall out of the accesses each instruction makes,
+  and tests assert them. Whether the tick belongs before or after the access is confirmed against
+  `mem_timing` in M2.

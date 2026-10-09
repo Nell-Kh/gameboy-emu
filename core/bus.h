@@ -24,8 +24,17 @@ public:
     [[nodiscard]] bool load(std::span<const std::uint8_t> bytes,
                             std::uint16_t address = 0) noexcept;
 
+    // Advances the rest of the machine by `t_cycles` clock ticks.
+    // The CPU calls this on every memory access (see ADR-005). For now it only
+    // counts; from M2 it will also advance the timer, PPU and APU.
+    void tick(std::uint32_t t_cycles) noexcept;
+
+    // Total clock ticks since power-on.
+    [[nodiscard]] std::uint64_t cycles() const noexcept;
+
 private:
     std::array<std::uint8_t, kAddressSpace> memory_{};
+    std::uint64_t cycles_ = 0;
 };
 
 }  // namespace core

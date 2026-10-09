@@ -89,4 +89,19 @@ TEST(Bus, LoadingNothingSucceeds) {
     EXPECT_EQ(bus.read8(0xFFFF), 0x00);
 }
 
+TEST(Bus, TickAccumulatesCycles) {
+    Bus bus;
+    EXPECT_EQ(bus.cycles(), 0U);
+    bus.tick(4);
+    bus.tick(4);
+    EXPECT_EQ(bus.cycles(), 8U);
+}
+
+TEST(Bus, ReadingAndWritingDoNotAdvanceTime) {
+    Bus bus;
+    bus.write8(0xC000, 0x01);
+    EXPECT_EQ(bus.read8(0xC000), 0x01);
+    EXPECT_EQ(bus.cycles(), 0U);
+}
+
 }  // namespace

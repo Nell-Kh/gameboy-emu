@@ -5,13 +5,14 @@
 #include <cstdint>
 
 #include "core/bus.h"
-#include "test_rom.h"
+#include "machine.h"
 
 namespace {
 
 using core::Bus;
 using core::Cpu;
 using test::kEntry;
+using test::Machine;
 
 TEST(Cpu, StartsInPostBootState) {
     Bus bus;
@@ -20,88 +21,75 @@ TEST(Cpu, StartsInPostBootState) {
     EXPECT_EQ(cpu.registers().sp, 0xFFFE);
     EXPECT_EQ(cpu.registers().af(), 0x01B0);
     EXPECT_FALSE(cpu.locked());
+    EXPECT_FALSE(cpu.halted());
+    EXPECT_FALSE(cpu.interrupts_enabled());
 }
 
 TEST(Cpu, NopTakesOneMachineCycle) {
-    Bus bus;
-    Cpu cpu(bus);
-    bus.load_rom(test::make_rom({0x00}));
-
-    EXPECT_EQ(cpu.step(), 4U);
-    EXPECT_EQ(cpu.registers().pc, kEntry + 1);
-    EXPECT_FALSE(cpu.locked());
-}
-
-TEST(Cpu, LoadImmediateIntoA) {
-    Bus bus;
-    Cpu cpu(bus);
-    bus.load_rom(test::make_rom({0x3E, 0x42}));
-
-    EXPECT_EQ(cpu.step(), 8U);
-    EXPECT_EQ(cpu.registers().a, 0x42);
-    EXPECT_EQ(cpu.registers().pc, kEntry + 2);
-}
-
-TEST(Cpu, StoreAAtAddressInHl) {
-    Bus bus;
-    Cpu cpu(bus);
-    bus.load_rom(test::make_rom({0x77}));
-    cpu.registers().a = 0x5A;
-    cpu.registers().set_hl(0xC123);
-
-    EXPECT_EQ(cpu.step(), 8U);
-    EXPECT_EQ(bus.read8(0xC123), 0x5A);
-    EXPECT_EQ(cpu.registers().pc, kEntry + 1);
-}
-
-TEST(Cpu, JumpReadsItsTargetLowByteFirst) {
-    Bus bus;
-    Cpu cpu(bus);
-    bus.load_rom(test::make_rom({0xC3, 0x34, 0x12}));
-
-    EXPECT_EQ(cpu.step(), 16U);
-    EXPECT_EQ(cpu.registers().pc, 0x1234);
+    Machine m({0x00});
+    EXPECT_EQ(m.step(), 4U);
+    EXPECT_EQ(m.reg().pc, kEntry + 1);
 }
 
 TEST(Cpu, StepReturnsExactlyTheTimeItPutOnTheBus) {
-    Bus bus;
-    Cpu cpu(bus);
-    // LD A, 0x07 ; LD (HL), A ; JP 0x0100
-    bus.load_rom(test::make_rom({0x3E, 0x07, 0x77, 0xC3, 0x00, 0x01}));
-    cpu.registers().set_hl(0xC000);
+    // LD A, 0x07 ; LD [HL], A ; JP 0x0100
+    Machine m({0x3E, 0x07, 0x77, 0xC3, 0x00, 0x01});
+    m.reg().set_hl(0xC000);
 
-    std::uint64_t total = 0;
-    total += cpu.step();
-    total += cpu.step();
-    total += cpu.step();
+    const std::uint64_t total = m.run(3);
 
     EXPECT_EQ(total, 32U);
-    EXPECT_EQ(bus.cycles(), total);
-    EXPECT_EQ(bus.read8(0xC000), 0x07);
-    EXPECT_EQ(cpu.registers().pc, kEntry);
+    EXPECT_EQ(m.bus.cycles(), total);
+    EXPECT_EQ(m.bus.read8(0xC000), 0x07);
+    EXPECT_EQ(m.reg().pc, kEntry);
 }
 
 TEST(Cpu, UndefinedOpcodeLocksTheCpu) {
-    Bus bus;
-    Cpu cpu(bus);
     // 0xD3 is one of the 11 opcodes that do not exist on the SM83.
-    bus.load_rom(test::make_rom({0xD3, 0x00}));
+    Machine m({0xD3, 0x00});
+    EXPECT_EQ(m.step(), 4U);
+    EXPECT_TRUE(m.cpu.locked());
+}
 
-    EXPECT_EQ(cpu.step(), 4U);
-    EXPECT_TRUE(cpu.locked());
+TEST(Cpu, AllElevenUndefinedOpcodesLock) {
+    for (const std::uint8_t opcode :
+         {0xD3, 0xDB, 0xDD, 0xE3, 0xE4, 0xEB, 0xEC, 0xED, 0xF4, 0xFC, 0xFD}) {
+        Machine m({opcode});
+        m.step();
+        EXPECT_TRUE(m.cpu.locked()) << "opcode " << static_cast<int>(opcode);
+    }
 }
 
 TEST(Cpu, LockedCpuBurnsTimeButDoesNothingElse) {
-    Bus bus;
-    Cpu cpu(bus);
-    bus.load_rom(test::make_rom({0xD3, 0x3E}));
-    static_cast<void>(cpu.step());
-    const std::uint16_t pc_when_locked = cpu.registers().pc;
+    Machine m({0xD3, 0x3E});
+    m.step();
+    const std::uint16_t pc_when_locked = m.reg().pc;
 
-    EXPECT_EQ(cpu.step(), 4U);
-    EXPECT_EQ(cpu.step(), 4U);
-    EXPECT_EQ(cpu.registers().pc, pc_when_locked);
-    EXPECT_EQ(bus.cycles(), 12U);
+    EXPECT_EQ(m.step(), 4U);
+    EXPECT_EQ(m.step(), 4U);
+    EXPECT_EQ(m.reg().pc, pc_when_locked);
+    EXPECT_EQ(m.bus.cycles(), 12U);
+}
+
+TEST(Cpu, HaltStopsExecution) {
+    // HALT ; LD A, 0x55
+    Machine m({0x76, 0x3E, 0x55});
+    m.reg().a = 0x00;
+
+    EXPECT_EQ(m.step(), 4U);
+    EXPECT_TRUE(m.cpu.halted());
+    EXPECT_EQ(m.run(3), 12U);
+    EXPECT_EQ(m.reg().a, 0x00);
+    EXPECT_EQ(m.reg().pc, kEntry + 1);
+}
+
+TEST(Cpu, DiAndEiSwitchTheInterruptMasterEnable) {
+    // EI ; NOP ; DI
+    Machine m({0xFB, 0x00, 0xF3});
+    m.run(2);
+    EXPECT_TRUE(m.cpu.interrupts_enabled());
+    m.step();
+    EXPECT_FALSE(m.cpu.interrupts_enabled());
 }
 
 }  // namespace

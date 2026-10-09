@@ -3,6 +3,7 @@ add_library(core STATIC
   bus.cpp
   cpu.cpp
   gameboy.cpp
+  opcodes.gen.cpp
   serial.cpp
   timer.cpp
 )

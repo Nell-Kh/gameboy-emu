@@ -14,3 +14,6 @@ Checks: >
   -readability-magic-numbers
 WarningsAsErrors: '*'
 HeaderFilterRegex: '.*/(core|app|tests)/.*'
+CheckOptions:
+  # GoogleTest's EXPECT_* macros expand to branches; do not count them.
+  readability-function-cognitive-complexity.IgnoreMacros: true

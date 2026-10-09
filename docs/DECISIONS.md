@@ -58,3 +58,21 @@ record that supersedes the old one, not by editing history.
   lengths are no longer a table to maintain; they fall out of the accesses each instruction makes,
   and tests assert them. Whether the tick belongs before or after the access is confirmed against
   `mem_timing` in M2.
+
+## ADR-006: The instruction decoder is generated from a public opcode table
+
+- **Context:** The SM83 has 500 instructions (245 plain, 256 behind the `0xCB` prefix, minus the
+  prefix byte itself). Typing 500 `case` labels by hand is where copy-paste bugs come from, and
+  there would be nothing independent to test them against.
+- **Decision:** `tools/opcodes.json` is the table from
+  [gbdev/gb-opcodes](https://github.com/gbdev/gb-opcodes) (commit `376f61c`, CC0-1.0), copied
+  unmodified. `tools/gen_opcodes.py` turns it into `core/opcodes.gen.cpp`: two `switch` statements
+  whose cases call small hand-written helpers in `core/cpu.cpp`, plus a table of each
+  instruction's name, length, duration and flag behaviour. The generator and its output are both
+  committed, and a CTest test fails if the committed output is stale.
+- **Consequences:** The interesting code (flags, timing, stack) is about 40 helpers a person can
+  read; the repetitive part is mechanical. The generator does not copy durations from the table:
+  they come from the memory accesses each instruction makes (ADR-005). That leaves the table as an
+  independent reference, and `cpu_opcode_table_test.cpp` checks every instruction's duration,
+  length and untouched flags against it, for all 16 flag states. Building needs Python 3 only to
+  re-generate or to run that one check.

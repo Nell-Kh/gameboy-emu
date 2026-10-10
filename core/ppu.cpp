@@ -29,10 +29,16 @@ void Ppu::write(std::uint16_t address, std::uint8_t value) noexcept {
     }
 }
 
-void Ppu::tick(std::uint32_t t_cycles) noexcept {
-    if (lcd_enabled()) {
-        frame_ticks_ = (frame_ticks_ + t_cycles) % kTicksPerFrame;
+bool Ppu::tick(std::uint32_t t_cycles) noexcept {
+    if (!lcd_enabled()) {
+        return false;
     }
+    constexpr std::uint32_t kVBlankStart = kTicksPerLine * kVisibleLines;
+    const std::uint32_t before = frame_ticks_;
+    frame_ticks_ = (frame_ticks_ + t_cycles) % kTicksPerFrame;
+    // The blank starts at the first tick of line 144. Steps are at most a few
+    // ticks, so a wrap past the end of the frame cannot also cross it.
+    return before < kVBlankStart && (frame_ticks_ >= kVBlankStart || frame_ticks_ < before);
 }
 
 bool Ppu::lcd_enabled() const noexcept {

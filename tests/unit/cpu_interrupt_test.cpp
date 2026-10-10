@@ -294,6 +294,61 @@ TEST(CpuHalt, TheTimerWakesAHaltedCpu) {
     EXPECT_EQ(m.reg().a, 1);
 }
 
+TEST(CpuHalt, WakingWithImeOnTakesNoExtraCycle) {
+    // The halted cycle that sees the request counts as the opcode fetch, so the
+    // dispatch needs only its remaining four machine cycles, as after a NOP.
+    Machine m({kEi, kNop, kHalt, kIncA});
+    set_interrupts(m, 0x04);
+    m.reg().sp = 0xD000;
+    enable_ime(m);
+    m.step();
+    m.run(3);
+    ASSERT_TRUE(m.cpu.halted());
+    m.bus.request_interrupt(Interrupt::Timer);
+
+    EXPECT_EQ(m.step(), 16U);
+    EXPECT_EQ(m.reg().pc, 0x0050);
+}
+
+TEST(CpuHalt, WakingWithImeOffRunsTheNextInstructionWithoutAnotherFetch) {
+    Machine m({kHalt, kIncA, kIncA});
+    set_interrupts(m, 0x04);
+    m.reg().a = 0;
+    m.step();
+    m.run(3);
+    m.bus.request_interrupt(Interrupt::Timer);
+
+    // INC A was already fetched by the last halted cycle.
+    EXPECT_EQ(m.step(), 0U);
+    EXPECT_EQ(m.reg().a, 1);
+    EXPECT_EQ(m.step(), 4U);
+    EXPECT_EQ(m.reg().a, 2);
+}
+
+TEST(CpuHalt, EiThenHaltWithAPendingInterruptReturnsToTheHalt) {
+    // The timer handler at 0x0050 is RETI. After it, the HALT runs again.
+    Machine m({});
+    auto rom = test::make_rom({kEi, kHalt, kIncA});
+    rom[0x0050] = kReti;
+    m.bus.load_rom(rom);
+    set_interrupts(m, 0x04, 0x04);
+    m.reg().sp = 0xD000;
+    m.reg().a = 0;
+
+    m.step();  // EI
+    m.step();  // HALT: does not halt, IME becomes 1
+    EXPECT_FALSE(m.cpu.halted());
+    m.step();  // dispatch
+    EXPECT_EQ(m.reg().pc, 0x0050);
+    EXPECT_EQ(m.bus.read8(0xCFFF), 0x01);
+    EXPECT_EQ(m.bus.read8(0xCFFE), 0x01);  // the HALT's own address
+    m.step();                              // RETI
+    EXPECT_EQ(m.reg().pc, kEntry + 1);
+    m.step();  // the HALT again, with nothing pending now
+    EXPECT_TRUE(m.cpu.halted());
+    EXPECT_EQ(m.reg().a, 0);
+}
+
 TEST(CpuHalt, BugWithImeOffAndInterruptAlreadyPendingRunsTheNextByteTwice) {
     Machine m({kHalt, kIncA, kNop});
     set_interrupts(m, 0x04, 0x04);

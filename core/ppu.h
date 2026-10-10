@@ -18,11 +18,15 @@ public:
     // One scanline takes 456 clock ticks; 144 visible lines plus 10 lines of
     // vertical blank make one frame.
     static constexpr std::uint32_t kTicksPerLine = 456;
+    static constexpr std::uint32_t kVisibleLines = 144;
     static constexpr std::uint32_t kLinesPerFrame = 154;
 
     [[nodiscard]] std::uint8_t read(std::uint16_t address) const noexcept;
     void write(std::uint16_t address, std::uint8_t value) noexcept;
-    void tick(std::uint32_t t_cycles) noexcept;
+
+    // Advances the line clock. Returns true if the vertical blank started
+    // during these ticks, which is when the VBlank interrupt is requested.
+    [[nodiscard]] bool tick(std::uint32_t t_cycles) noexcept;
 
 private:
     [[nodiscard]] bool lcd_enabled() const noexcept;

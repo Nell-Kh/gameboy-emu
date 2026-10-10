@@ -157,3 +157,21 @@ record that supersedes the old one, not by editing history.
 - **Consequences:** One virtual call per cartridge access, which is negligible next to the rest of
   a memory access. Adding MBC3 and MBC5 in M4 means one new class each and one line in the
   factory. Battery-backed RAM is kept in memory only until M4 adds `.sav` files.
+
+## ADR-013: HALT is a run of opcode fetches; the line clock requests VBlank
+
+- **Context:** Four Mooneye tests were listed as failing for an unconfirmed reason. Reading their
+  sources showed two causes. All four wait for the VBlank interrupt, which nothing requested.
+  And two of them (`di_timing-GS`, `halt_ime1_timing2-GS`) measure the time from waking out of
+  HALT to the next interrupt, to the machine cycle; it was one cycle too long. While halted the
+  CPU keeps fetching the opcode after HALT, so the cycle in which the interrupt shows up is
+  already that fetch.
+- **Decision:** The line clock from ADR-010 requests the VBlank interrupt when line 144 starts.
+  When a halted CPU sees an enabled interrupt, it continues straight from the fetch that halted
+  cycle made: with IME on it goes into the dispatch's remaining four machine cycles, with IME off
+  it executes the next instruction without fetching it again. EI directly followed by HALT with an
+  interrupt already pending now services the interrupt with the HALT's own address as the return
+  address, so the HALT runs again afterwards.
+- **Consequences:** All four tests pass. `Cpu::step()` can return 0 ticks for the instruction right
+  after a wake-up with IME off, because its fetch was counted in the last halted step. Unit tests
+  pin both wake-up timings and the EI-then-HALT return address.

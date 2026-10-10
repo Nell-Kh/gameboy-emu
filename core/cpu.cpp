@@ -32,14 +32,18 @@ void Cpu::run_one_step() {
         }
         stopped_ = false;
     }
+    // While halted the CPU keeps fetching the opcode after HALT, one machine
+    // cycle at a time. The cycle in which an enabled interrupt shows up is
+    // therefore already the fetch: execution or dispatch continues from it
+    // with no extra cycle, as if HALT had been a run of NOPs (ADR-013).
+    bool fetched_while_halted = false;
     if (halted_) {
-        // HALT ends as soon as an enabled interrupt is requested, even if IME
-        // is off. With IME off the CPU simply carries on after the HALT.
         if (bus_.pending_interrupts() == 0) {
             internal_cycle();
             return;
         }
         halted_ = false;
+        fetched_while_halted = true;
     }
     // An EI from the previous instruction takes effect after this one.
     const bool enable_after = ime_ == Ime::Pending;
@@ -47,7 +51,7 @@ void Cpu::run_one_step() {
     // Interrupts are checked after the opcode fetch, so a request that arrives
     // during the fetch cycle is still serviced before this instruction runs
     // (ADR-009). The fetched opcode is then discarded and PC stays put.
-    const std::uint8_t opcode = read8(reg_.pc);
+    const std::uint8_t opcode = fetched_while_halted ? bus_.read8(reg_.pc) : read8(reg_.pc);
     if (ime_ == Ime::Enabled && bus_.pending_interrupts() != 0) {
         service_interrupt();
         return;
@@ -476,14 +480,22 @@ void Cpu::rst(std::uint16_t vector) {
 // --- CPU control ---
 
 void Cpu::halt() noexcept {
-    if (ime_ == Ime::Disabled && bus_.pending_interrupts() != 0) {
+    const bool pending = bus_.pending_interrupts() != 0;
+    if (pending && ime_ == Ime::Pending) {
+        // EI directly before HALT, with an interrupt already waiting: the
+        // interrupt is serviced first and returns to the HALT, which then runs
+        // again. PC is wound back so the dispatch pushes the HALT's address.
+        --reg_.pc;
+        return;
+    }
+    if (pending && ime_ == Ime::Disabled) {
         // The HALT bug: with IME off and an interrupt already pending, the CPU
         // does not halt, and it fails to advance PC on the next fetch. The byte
         // after HALT is therefore read twice.
         repeat_next_byte_ = true;
-    } else {
-        halted_ = true;
+        return;
     }
+    halted_ = true;
 }
 
 // STOP is two bytes long; the second one is ignored. It also resets DIV.

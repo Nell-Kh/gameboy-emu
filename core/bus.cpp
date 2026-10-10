@@ -205,7 +205,9 @@ void Bus::tick(std::uint32_t t_cycles) noexcept {
         dma_ticks_ -= kTicksPerMachineCycle;
         step_dma();
     }
-    ppu_.tick(t_cycles);
+    if (ppu_.tick(t_cycles)) {
+        request_interrupt(Interrupt::VBlank);
+    }
     if (timer_.tick(t_cycles)) {
         request_interrupt(Interrupt::Timer);
     }

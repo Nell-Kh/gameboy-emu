@@ -62,6 +62,9 @@ Blargg's timing ROMs, from the same repository:
 | `jp_timing`, `jp_cc_timing`, `ret_timing`, `ret_cc_timing`, `reti_timing`, `rst_timing` | the same for JP, RET, RETI and RST | Passed |
 | `push_timing`, `pop_timing`, `add_sp_e_timing`, `ld_hl_sp_e_timing` | the same for the stack instructions | Passed |
 | `reti_intr_timing`, `halt_ime1_timing`, `div_timing` | interrupt after RETI, wake from HALT, DIV phase | Passed |
+| `halt_ime0_ei` | EI right before HALT makes HALT behave as with IME on | Passed |
+| `halt_ime0_nointr_timing`, `halt_ime1_timing2-GS` | waking from HALT costs exactly what a run of NOPs would | Passed |
+| `di_timing-GS` | DI takes effect immediately on a DMG | Passed |
 | `instr/daa` | DAA for every input | Passed |
 | `boot_regs-dmgABC` | CPU registers after boot | Passed |
 | `emulator-only/mbc1/bits_bank1`, `bits_bank2`, `bits_mode`, `bits_ramg` | which bits of each MBC1 register count | Passed |
@@ -87,12 +90,11 @@ To reproduce one by hand:
 - The other Mooneye acceptance tests in the same folders. All were run by hand; these do not pass:
   - `boot_div-dmgABCmgb` and `boot_hwio-dmgABCmgb`: the exact DIV phase and the I/O register values
     the boot ROM leaves behind are not modelled.
-  - `di_timing-GS`, `halt_ime0_ei`, `halt_ime0_nointr_timing`, `halt_ime1_timing2-GS`: they read
-    PPU registers and fail. The cause has not been investigated; missing PPU behaviour (M3) is the
-    likely one, but that is not confirmed.
   - `boot_*` tests for other models (`dmg0`, `mgb`, `sgb`, `sgb2`, `-S`) are expected to fail on a
     DMG.
-  - The `ppu/` and `serial/` folders have not been run.
+  - `serial/boot_sclk_align-dmgABCmgb`: the phase of the serial clock the boot ROM leaves behind is
+    not modelled.
+  - All twelve `ppu/` tests: they need STAT, the PPU modes and their timing (M3).
 - Anything involving the screen or sound (M3, M5).
 
 ## Known simplifications
@@ -105,10 +107,9 @@ that is a bug in this document.
 - **STOP:** the CPU sleeps until a joypad interrupt is requested and DIV is reset, but the clock
   keeps running. On hardware the oscillator stops, so the timer would freeze. There is also no
   joypad yet, so nothing in a real program can end a STOP.
-- **EI followed directly by HALT:** on hardware an interrupt that is already pending is serviced
-  and then returns *to* the HALT, halting again. Here it returns to the instruction after it.
-- **Waking from HALT** costs no extra time. Hardware timing around the wake-up cycle is not
-  modelled.
+- **HALT** is modelled as a run of opcode fetches: waking costs no extra cycle, and EI directly
+  before HALT with an interrupt already pending services it and returns to the HALT (ADR-013).
+  The exact timing of that EI-then-HALT case is not covered by any test ROM.
 - **Interrupt dispatch** takes 20 ticks and is checked after the opcode fetch (ADR-009). The one
   mid-dispatch effect that is modelled is the high-byte push overwriting IE (the jump goes to
   `0x0000`); other cancellation cases are not.
@@ -138,7 +139,8 @@ that is a bug in this document.
 - LCDC is a plain read-write register; none of its bits except "LCD on" has any effect yet.
 - At power-on the LCD is on and LY starts at line 0. The exact line position the real boot ROM
   leaves behind is not modelled.
-- No rendering, no PPU interrupts (VBlank, STAT), no video-memory access rules.
+- The VBlank interrupt is requested at the first tick of line 144. No rendering, no STAT
+  interrupt, no video-memory access rules.
 
 **Memory and I/O**
 

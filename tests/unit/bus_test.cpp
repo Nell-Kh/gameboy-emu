@@ -383,6 +383,15 @@ TEST(Bus, TimerOverflowRaisesTheTimerInterrupt) {
     EXPECT_TRUE(bus.interrupt_requested(Interrupt::Timer));
 }
 
+TEST(Bus, TheStartOfVblankRequestsTheVblankInterrupt) {
+    Bus bus;
+    bus.write8(Bus::kInterruptFlag, 0x00);
+    bus.tick(core::Ppu::kTicksPerLine * 144 - 4);
+    EXPECT_FALSE(bus.interrupt_requested(Interrupt::VBlank));
+    bus.tick(4);
+    EXPECT_TRUE(bus.interrupt_requested(Interrupt::VBlank));
+}
+
 TEST(Bus, LyIsRoutedToThePpuAndAdvancesWithTime) {
     Bus bus;
     EXPECT_EQ(bus.read8(core::Ppu::kLy), 0x00);

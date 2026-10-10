@@ -4,15 +4,16 @@
 
 A Game Boy (DMG) emulator in C++20. Work in progress.
 
-**Status:** the CPU, timer, memory map, OAM DMA and MBC1 cartridges are done. All 500
-instructions are implemented, and Blargg's `cpu_instrs`, `instr_timing` and `mem_timing` and 58
-Mooneye tests pass in CI. There is no screen or sound
-yet, so it cannot show a game; see [docs/accuracy.md](docs/accuracy.md) for exactly what is and
-is not covered.
+**Status (v0.2.0):** CPU, timing, memory and MBC1 complete. Blargg's `cpu_instrs`,
+`instr_timing` and `mem_timing` and 62 Mooneye tests pass in CI. There is no screen or sound yet,
+so it cannot show a game; see [docs/accuracy.md](docs/accuracy.md) for exactly what is and is not
+covered.
 
 ## Build and test
 
-Needs CMake 3.24+, Ninja, a C++20 compiler and, for one test, Python 3.
+Needs CMake 3.24+, Ninja and a C++20 compiler. Python 3 is used by one test,
+`Generator.OpcodesAreUpToDate`, which checks that `core/opcodes.gen.cpp` matches what
+`tools/gen_opcodes.py` generates. Without Python that one test is left out of the run.
 
 ```
 cmake --preset asan

@@ -45,6 +45,11 @@ record that supersedes the old one, not by editing history.
 
 ## ADR-005: The CPU ticks the machine on every memory access
 
+- **Status:** Accepted, amended. The tick-before-access order is confirmed by `mem_timing` and the
+  17 Mooneye instruction-timing tests (M2). Two refinements since: interrupts are checked after
+  the opcode fetch, not before it (ADR-009), and a halted CPU's cycles count as opcode fetches
+  (ADR-013). OAM DMA and the line clock are driven from the same `Bus::tick` calls, one step per
+  machine cycle, so the model itself is unchanged.
 - **Context:** The original plan was for `step()` to run a whole instruction and for the
   scheduler to advance the timer, PPU and APU afterwards by the returned cycle count. That is
   instruction-level accuracy. Blargg `mem_timing`, which is on the must-pass list, checks at which
@@ -94,6 +99,8 @@ record that supersedes the old one, not by editing history.
 
 ## ADR-008: M1 runs the eleven individual cpu_instrs ROMs; the combined ROM waits for MBC1
 
+- **Status:** Completed in M2. MBC1 exists (ADR-012) and the combined `cpu_instrs.gb` and
+  `mem_timing.gb` run in CI alongside the individual ROMs.
 - **Context:** `cpu_instrs.gb` is one 64 KiB ROM containing eleven sub-tests, and it needs an MBC1
   mapper to switch banks. The same eleven sub-tests also ship as separate 32 KiB ROMs that need no
   mapper. Cartridge mappers are M2 work.
@@ -122,6 +129,7 @@ record that supersedes the old one, not by editing history.
 
 ## ADR-010: LY counts scanlines before the PPU exists
 
+- **Status:** Accepted, amended by ADR-013: the line clock also requests the VBlank interrupt.
 - **Context:** Mooneye's test ROMs switch the screen off safely before reporting a result, which
   means waiting for LY (the current scanline, `0xFF44`) to reach the vertical blank. With LY stuck
   at 0 every one of them hangs, whatever its verdict.

@@ -105,7 +105,7 @@ To reproduce one by hand:
     implemented from the Pan Docs but does not match this test in every layout yet.
   - `ppu/lcdon_timing-GS`, `ppu/lcdon_write_timing-GS`: the first line after the LCD is switched on
     starts in mode 0 as on hardware, but its 2-dot lateness is not modelled.
-- Anything involving the screen or sound (M3, M5).
+- The picture itself: dmg-acid2 (next M3 step). Sound (M5).
 
 ## Known simplifications
 
@@ -157,14 +157,17 @@ that is a bug in this document.
   the real boot ROM leaves it at is not modelled.
 - The STAT write quirk of the DMG (a write can raise a STAT interrupt as if `FF` had been written
   for one cycle) is not modelled.
-- The background and the window are drawn, as a scanline renderer (ADR-014): register writes
-  during mode 3 take effect from the next line. Objects affect mode 3's length but are not drawn
-  yet.
+- The background, window and objects are drawn by a scanline renderer (ADR-014): each line is
+  drawn in one go when its mode 3 starts, so register writes during mode 3 take effect from the
+  next line. dmg-acid2 matches its reference in a hand run; it is not in CI yet.
 - **Window quirks:** on hardware WX = 0 shifts the window left by `SCX % 8`, and WX = 166 shows
   a column at the right edge shifted down a line. Neither is modelled: WX = 0 here just hides the
   window's first 7 columns, and WX = 166 shows window column 0 at screen x 159.
 - LY = WY is checked at the start of each line's mode 2. The first line after the LCD is switched
   on has no mode 2, so for that line it is checked at the moment the LCD is switched on.
+- That first line also has no OAM scan, so it draws no objects. Not checked against hardware.
+- Objects are drawn with the object size (LCDC bit 2) at the start of mode 3; the OAM scan uses
+  the size at the start of mode 2. A change between the two is not modelled further.
 
 **Memory and I/O**
 

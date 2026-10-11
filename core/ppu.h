@@ -80,13 +80,23 @@ public:
     [[nodiscard]] const Frame& frame() const noexcept;
 
 private:
+    static constexpr std::uint8_t kMaxObjectsPerLine = 10;
+
     [[nodiscard]] bool lcd_enabled() const noexcept;
     [[nodiscard]] std::uint8_t ly() const noexcept;
     void step_dot() noexcept;
     void start_line() noexcept;
     void start_drawing() noexcept;
     [[nodiscard]] std::uint32_t object_penalty() const noexcept;
+    // Draws line `line_` into frame_: background, then window, then objects.
     void render_line() noexcept;
+    void render_background() noexcept;
+    void render_window() noexcept;
+    void render_objects() noexcept;
+    // Screen columns already claimed by an opaque pixel of a higher-priority object.
+    using ObjectColumns = std::array<bool, kScreenWidth>;
+    // Draws one object's row on the current line, skipping columns in `taken`.
+    void draw_object(std::uint8_t object, ObjectColumns& taken) noexcept;
     // True if the window covers part of the current line.
     [[nodiscard]] bool window_visible() const noexcept;
     // Colour index (0-3) of one pixel of a tile row in VRAM.
@@ -133,7 +143,7 @@ private:
     bool lyc_equal_ = true;
     bool stat_line_high_ = false;
     // Indices into OAM of the objects found by the last OAM scan.
-    std::array<std::uint8_t, 10> line_objects_{};
+    std::array<std::uint8_t, kMaxObjectsPerLine> line_objects_{};
     std::uint8_t line_object_count_ = 0;
 };
 

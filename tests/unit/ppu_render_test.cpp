@@ -18,12 +18,19 @@ constexpr std::uint8_t kLcdBg8000 = 0x91;
 constexpr std::uint8_t kIdentityPalette = 0xE4;  // index n -> shade n
 // As above, plus the window on with the $9C00 map.
 constexpr std::uint8_t kLcdBgWindow9c00 = 0xF1;
+// LCD on, background on, $8000 tile data, $9800 map, objects on (8x8 / 8x16).
+constexpr std::uint8_t kLcdBgObjects = 0x93;
+constexpr std::uint8_t kLcdBgTallObjects = 0x97;
+// The first line after LCD-on has no OAM scan, so object tests draw on line 1.
+constexpr std::uint32_t kObjectLine = 1;
 
 class PpuRender : public testing::Test {
 protected:
     void SetUp() override {
         set(Ppu::kLcdc, kLcdOff);
         set(Ppu::kBgp, kIdentityPalette);
+        set(Ppu::kObp0, kIdentityPalette);
+        set(Ppu::kObp1, kIdentityPalette);
     }
 
     void set(std::uint16_t address, std::uint8_t value) {
@@ -36,6 +43,16 @@ protected:
             ppu.write_vram(static_cast<std::uint16_t>(address + row * 2), lo);
             ppu.write_vram(static_cast<std::uint16_t>(address + row * 2 + 1), hi);
         }
+    }
+
+    // Writes OAM entry `object` so its top-left pixel is at screen (x, line).
+    void put_object(std::uint8_t object, int x, std::uint32_t line, std::uint8_t tile,
+                    std::uint8_t attributes = 0) {
+        const auto base = static_cast<std::uint16_t>(Ppu::kOamStart + object * 4);
+        ppu.write_oam(base, static_cast<std::uint8_t>(line + 16));
+        ppu.write_oam(static_cast<std::uint16_t>(base + 1), static_cast<std::uint8_t>(x + 8));
+        ppu.write_oam(static_cast<std::uint16_t>(base + 2), tile);
+        ppu.write_oam(static_cast<std::uint16_t>(base + 3), attributes);
     }
 
     // Switches the LCD on with `lcdc` and runs until line `line` is drawn.
@@ -285,6 +302,210 @@ TEST_F(PpuRender, WxBelow7CutsOffTheWindowsLeftColumns) {
     EXPECT_EQ(pixel(1, 0), 0);
     EXPECT_EQ(pixel(4, 0), 3);
     EXPECT_EQ(pixel(5, 0), 0);  // window x 8: map column 1, tile 0
+}
+
+// Objects. Unless a test says otherwise the background is tile 0, all
+// colour 0, and every palette maps index n to shade n.
+
+TEST_F(PpuRender, ObjectTopLeftIsAtXMinus8AndYMinus16) {
+    fill_tile(0x8010, 0xFF, 0xFF);  // tile 1: index 3
+    put_object(0, 20, kObjectLine, 1);
+    draw_until_line(kLcdBgObjects, kObjectLine + 8);
+    EXPECT_EQ(pixel(20, kObjectLine - 1), 0);
+    EXPECT_EQ(pixel(19, kObjectLine), 0);
+    EXPECT_EQ(pixel(20, kObjectLine), 3);
+    EXPECT_EQ(pixel(27, kObjectLine), 3);
+    EXPECT_EQ(pixel(28, kObjectLine), 0);
+    EXPECT_EQ(pixel(20, kObjectLine + 7), 3);
+    EXPECT_EQ(pixel(20, kObjectLine + 8), 0);
+}
+
+TEST_F(PpuRender, ObjectsNeedLcdc1) {
+    fill_tile(0x8010, 0xFF, 0xFF);
+    put_object(0, 20, kObjectLine, 1);
+    draw_until_line(kLcdBg8000, kObjectLine);
+    EXPECT_EQ(pixel(20, kObjectLine), 0);
+}
+
+TEST_F(PpuRender, FirstLineAfterLcdOnDrawsNoObjects) {
+    fill_tile(0x8010, 0xFF, 0xFF);
+    put_object(0, 20, 0, 1);
+    draw_until_line(kLcdBgObjects, 1);
+    EXPECT_EQ(pixel(20, 0), 0);
+    EXPECT_EQ(pixel(20, 1), 3);
+}
+
+TEST_F(PpuRender, ObjectColour0IsTransparent) {
+    fill_tile(0x8000, 0x00, 0xFF);  // background: index 2
+    fill_tile(0x8010, 0x55, 0x33);  // object: indices 0,1,2,3,...
+    set(Ppu::kObp0, 0xFC);          // 1, 2, 3 -> shade 3
+    put_object(0, 8, kObjectLine, 1);
+    draw_until_line(kLcdBgObjects, kObjectLine);
+    EXPECT_EQ(pixel(8, kObjectLine), 2);
+    EXPECT_EQ(pixel(9, kObjectLine), 3);
+    EXPECT_EQ(pixel(10, kObjectLine), 3);
+    EXPECT_EQ(pixel(11, kObjectLine), 3);
+    EXPECT_EQ(pixel(12, kObjectLine), 2);
+}
+
+TEST_F(PpuRender, AttributeBit4SelectsObp1) {
+    fill_tile(0x8010, 0xFF, 0x00);  // index 1
+    set(Ppu::kObp0, 0x04);          // 1 -> 1
+    set(Ppu::kObp1, 0x0C);          // 1 -> 3
+    put_object(0, 8, kObjectLine, 1);
+    put_object(1, 40, kObjectLine, 1, 0x10);
+    draw_until_line(kLcdBgObjects, kObjectLine);
+    EXPECT_EQ(pixel(8, kObjectLine), 1);
+    EXPECT_EQ(pixel(40, kObjectLine), 3);
+}
+
+TEST_F(PpuRender, AttributeBit5FlipsHorizontally) {
+    fill_tile(0x8010, 0x80, 0x00);  // only column 0: index 1
+    put_object(0, 8, kObjectLine, 1, 0x20);
+    draw_until_line(kLcdBgObjects, kObjectLine);
+    EXPECT_EQ(pixel(8, kObjectLine), 0);
+    EXPECT_EQ(pixel(15, kObjectLine), 1);
+}
+
+TEST_F(PpuRender, AttributeBit6FlipsVertically) {
+    ppu.write_vram(0x8010, 0xFF);  // tile 1, only row 0: index 1
+    put_object(0, 8, kObjectLine, 1, 0x40);
+    draw_until_line(kLcdBgObjects, kObjectLine + 7);
+    EXPECT_EQ(pixel(8, kObjectLine), 0);
+    EXPECT_EQ(pixel(8, kObjectLine + 7), 1);
+}
+
+TEST_F(PpuRender, TallObjectsUseTwoTilesAndIgnoreTileBit0) {
+    fill_tile(0x8020, 0xFF, 0x00);  // tile 2: index 1
+    fill_tile(0x8030, 0x00, 0xFF);  // tile 3: index 2
+    put_object(0, 8, kObjectLine, 3);
+    draw_until_line(kLcdBgTallObjects, kObjectLine + 16);
+    EXPECT_EQ(pixel(8, kObjectLine), 1);
+    EXPECT_EQ(pixel(8, kObjectLine + 7), 1);
+    EXPECT_EQ(pixel(8, kObjectLine + 8), 2);
+    EXPECT_EQ(pixel(8, kObjectLine + 15), 2);
+    EXPECT_EQ(pixel(8, kObjectLine + 16), 0);
+}
+
+TEST_F(PpuRender, TallObjectsFlipBothTilesVertically) {
+    fill_tile(0x8020, 0xFF, 0x00);
+    fill_tile(0x8030, 0x00, 0xFF);
+    put_object(0, 8, kObjectLine, 2, 0x40);
+    draw_until_line(kLcdBgTallObjects, kObjectLine + 15);
+    EXPECT_EQ(pixel(8, kObjectLine), 2);
+    EXPECT_EQ(pixel(8, kObjectLine + 15), 1);
+}
+
+TEST_F(PpuRender, ObjectsClipAtTheLeftEdge) {
+    fill_tile(0x8010, 0x0F, 0x00);  // columns 4-7: index 1
+    put_object(0, -4, kObjectLine, 1);
+    draw_until_line(kLcdBgObjects, kObjectLine);
+    EXPECT_EQ(pixel(0, kObjectLine), 1);
+    EXPECT_EQ(pixel(3, kObjectLine), 1);
+    EXPECT_EQ(pixel(4, kObjectLine), 0);
+}
+
+TEST_F(PpuRender, ObjectsClipAtTheRightEdge) {
+    fill_tile(0x8010, 0xFF, 0x00);
+    put_object(0, 156, kObjectLine, 1);
+    draw_until_line(kLcdBgObjects, kObjectLine);
+    EXPECT_EQ(pixel(155, kObjectLine), 0);
+    EXPECT_EQ(pixel(156, kObjectLine), 1);
+    EXPECT_EQ(pixel(159, kObjectLine), 1);
+}
+
+TEST_F(PpuRender, SmallerXWinsWhereObjectsOverlap) {
+    fill_tile(0x8010, 0xFF, 0x00);      // tile 1: index 1
+    fill_tile(0x8020, 0x00, 0xFF);      // tile 2: index 2
+    put_object(0, 12, kObjectLine, 1);  // 12-19
+    put_object(1, 8, kObjectLine, 2);   // 8-15, smaller X
+    draw_until_line(kLcdBgObjects, kObjectLine);
+    EXPECT_EQ(pixel(11, kObjectLine), 2);
+    EXPECT_EQ(pixel(12, kObjectLine), 2);
+    EXPECT_EQ(pixel(15, kObjectLine), 2);
+    EXPECT_EQ(pixel(16, kObjectLine), 1);
+}
+
+TEST_F(PpuRender, SameXEarlierInOamWins) {
+    fill_tile(0x8010, 0xFF, 0x00);
+    fill_tile(0x8020, 0x00, 0xFF);
+    put_object(0, 8, kObjectLine, 1);
+    put_object(1, 8, kObjectLine, 2);
+    draw_until_line(kLcdBgObjects, kObjectLine);
+    EXPECT_EQ(pixel(8, kObjectLine), 1);
+}
+
+TEST_F(PpuRender, LowerPriorityObjectShowsThroughTransparentPixels) {
+    fill_tile(0x8010, 0x0F, 0x00);  // columns 4-7: index 1, columns 0-3 transparent
+    fill_tile(0x8020, 0x00, 0xFF);
+    put_object(0, 8, kObjectLine, 1);
+    put_object(1, 8, kObjectLine, 2);
+    draw_until_line(kLcdBgObjects, kObjectLine);
+    EXPECT_EQ(pixel(8, kObjectLine), 2);
+    EXPECT_EQ(pixel(11, kObjectLine), 2);
+    EXPECT_EQ(pixel(12, kObjectLine), 1);
+}
+
+TEST_F(PpuRender, AttributeBit7PutsTheObjectBehindBackgroundColours1To3) {
+    fill_tile(0x8000, 0xF0, 0x00);  // background: columns 0-3 index 1, 4-7 index 0
+    fill_tile(0x8010, 0xFF, 0xFF);
+    put_object(0, 0, kObjectLine, 1, 0x80);
+    draw_until_line(kLcdBgObjects, kObjectLine);
+    EXPECT_EQ(pixel(0, kObjectLine), 1);
+    EXPECT_EQ(pixel(3, kObjectLine), 1);
+    EXPECT_EQ(pixel(4, kObjectLine), 3);
+    EXPECT_EQ(pixel(7, kObjectLine), 3);
+}
+
+TEST_F(PpuRender, HiddenWinnerStillHidesTheObjectBelowIt) {
+    fill_tile(0x8000, 0xFF, 0x00);  // background: index 1
+    fill_tile(0x8010, 0xFF, 0xFF);
+    fill_tile(0x8020, 0x00, 0xFF);
+    put_object(0, 8, kObjectLine, 1, 0x80);  // wins, but is behind the background
+    put_object(1, 8, kObjectLine, 2);
+    draw_until_line(kLcdBgObjects, kObjectLine);
+    EXPECT_EQ(pixel(8, kObjectLine), 1);
+}
+
+TEST_F(PpuRender, ObjectsDrawWithTheBackgroundOff) {
+    fill_tile(0x8000, 0xFF, 0xFF);
+    fill_tile(0x8010, 0xFF, 0xFF);
+    put_object(0, 8, kObjectLine, 1, 0x80);  // background is colour 0 when off
+    draw_until_line(0x92, kObjectLine);
+    EXPECT_EQ(pixel(0, kObjectLine), 0);
+    EXPECT_EQ(pixel(8, kObjectLine), 3);
+}
+
+TEST_F(PpuRender, AtMostTenObjectsPerLine) {
+    fill_tile(0x8010, 0xFF, 0xFF);
+    for (std::uint8_t i = 0; i < 11; ++i) {
+        put_object(i, i * 8, kObjectLine, 1);
+    }
+    draw_until_line(kLcdBgObjects, kObjectLine);
+    EXPECT_EQ(pixel(72, kObjectLine), 3);
+    EXPECT_EQ(pixel(80, kObjectLine), 0);
+}
+
+TEST_F(PpuRender, OffScreenObjectsStillCountTowardsTheTen) {
+    fill_tile(0x8010, 0xFF, 0xFF);
+    for (std::uint8_t i = 0; i < 10; ++i) {
+        put_object(i, -8, kObjectLine, 1);  // OAM X = 0: on the line, never visible
+    }
+    put_object(10, 8, kObjectLine, 1);
+    draw_until_line(kLcdBgObjects, kObjectLine);
+    EXPECT_EQ(pixel(8, kObjectLine), 0);
+}
+
+TEST_F(PpuRender, ObjectsDrawOverTheWindow) {
+    fill_tile(0x8010, 0xFF, 0x00);  // window tile: index 1
+    fill_tile(0x8020, 0xFF, 0xFF);
+    ppu.write_vram(0x9C00, 1);
+    set(Ppu::kWx, 7);
+    set(Ppu::kWy, 0);
+    put_object(0, 2, kObjectLine, 2);
+    draw_until_line(0xF3, kObjectLine);  // window setup plus objects on
+    EXPECT_EQ(pixel(0, kObjectLine), 1);
+    EXPECT_EQ(pixel(2, kObjectLine), 3);
 }
 
 }  // namespace

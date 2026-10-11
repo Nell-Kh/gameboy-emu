@@ -1,5 +1,6 @@
 #include "core/ppu.h"
 
+#include <algorithm>
 #include <cstddef>
 
 #include "core/interrupts.h"
@@ -14,6 +15,7 @@ constexpr std::uint8_t kBgTileMapHigh = 0x08;
 constexpr std::uint8_t kUnsignedTileData = 0x10;
 constexpr std::uint8_t kWindowEnable = 0x20;
 constexpr std::uint8_t kTallObjects = 0x04;
+constexpr std::uint8_t kObjectEnable = 0x02;
 constexpr std::uint8_t kBgWindowEnable = 0x01;
 
 constexpr std::uint8_t kStatUnused = 0x80;
@@ -28,10 +30,26 @@ constexpr auto kVBlankBit = static_cast<std::uint8_t>(Interrupt::VBlank);
 constexpr auto kStatBit = static_cast<std::uint8_t>(Interrupt::LcdStat);
 
 constexpr std::uint8_t kOpenBus = 0xFF;
-constexpr std::uint8_t kMaxObjectsPerLine = 10;
 constexpr std::uint8_t kObjectBytes = 4;
 constexpr std::uint8_t kObjectYOffset = 16;
 constexpr std::uint8_t kMaxWindowX = 166;
+constexpr std::uint8_t kObjectXOffset = 8;
+constexpr std::uint32_t kTileBytes = 16;
+
+// Object attribute bits (OAM byte 3).
+constexpr std::uint8_t kBehindBackground = 0x80;
+constexpr std::uint8_t kYFlip = 0x40;
+constexpr std::uint8_t kXFlip = 0x20;
+constexpr std::uint8_t kPalette1 = 0x10;
+
+constexpr std::uint16_t kMapLow = 0x9800;
+constexpr std::uint16_t kMapHigh = 0x9C00;
+constexpr std::uint32_t kMapTiles = 32;
+
+// The shade (0-3) a palette register gives colour index `index`.
+constexpr std::uint8_t shade(std::uint8_t palette, std::uint8_t index) noexcept {
+    return static_cast<std::uint8_t>((palette >> (index * 2U)) & 3U);
+}
 
 }  // namespace
 
@@ -90,6 +108,8 @@ std::uint8_t Ppu::write(std::uint16_t address, std::uint8_t value) noexcept {
                 // check it here or a window at WY = 0 would be missing for a frame.
                 window_y_reached_ = wy_ == 0;
                 window_line_ = 0;
+                // No OAM scan either, so the line draws no objects.
+                line_object_count_ = 0;
                 return update_stat();
             }
             return 0;
@@ -209,7 +229,6 @@ bool Ppu::window_visible() const noexcept {
 }
 
 std::uint16_t Ppu::bg_tile_row(std::uint8_t index, std::uint32_t row) const noexcept {
-    constexpr std::uint32_t kTileBytes = 16;
     constexpr std::uint32_t kSignedBase = 0x9000;
     std::uint32_t address = 0;
     if ((lcdc_ & kUnsignedTileData) != 0) {
@@ -231,11 +250,15 @@ std::uint8_t Ppu::tile_pixel(std::uint16_t row_address, std::uint32_t column) co
 }
 
 void Ppu::render_line() noexcept {
-    const std::size_t row_start = static_cast<std::size_t>(line_) * kScreenWidth;
-    const auto shade = [](std::uint8_t palette, std::uint8_t index) {
-        return static_cast<std::uint8_t>((palette >> (index * 2U)) & 3U);
-    };
+    render_background();
+    if (window_visible()) {
+        render_window();
+    }
+    render_objects();
+}
 
+void Ppu::render_background() noexcept {
+    const std::size_t row_start = static_cast<std::size_t>(line_) * kScreenWidth;
     if ((lcdc_ & kBgWindowEnable) == 0) {
         // Background and window off: every pixel is colour 0.
         bg_index_.fill(0);
@@ -244,10 +267,6 @@ void Ppu::render_line() noexcept {
         }
         return;
     }
-
-    constexpr std::uint16_t kMapLow = 0x9800;
-    constexpr std::uint16_t kMapHigh = 0x9C00;
-    constexpr std::uint32_t kMapTiles = 32;
     const std::uint16_t map = (lcdc_ & kBgTileMapHigh) != 0 ? kMapHigh : kMapLow;
     const std::uint32_t y = (line_ + scy_) & 0xFFU;
     for (std::uint32_t x = 0; x < kScreenWidth; ++x) {
@@ -258,13 +277,13 @@ void Ppu::render_line() noexcept {
         bg_index_.at(x) = index;
         frame_.at(row_start + x) = shade(bgp_, index);
     }
+}
 
-    // The window: drawn over the background from screen x = WX - 7 to the
-    // right edge, from its own tile map, with no scrolling.
-    if (!window_visible()) {
-        return;
-    }
+// Drawn over the background from screen x = WX - 7 to the right edge, from
+// its own tile map, with no scrolling.
+void Ppu::render_window() noexcept {
     constexpr std::uint32_t kWindowXOffset = 7;
+    const std::size_t row_start = static_cast<std::size_t>(line_) * kScreenWidth;
     const std::uint16_t window_map = (lcdc_ & kWindowTileMapHigh) != 0 ? kMapHigh : kMapLow;
     const std::uint32_t start = wx_ > kWindowXOffset ? wx_ - kWindowXOffset : 0;
     const std::uint32_t wy = window_line_;
@@ -279,12 +298,75 @@ void Ppu::render_line() noexcept {
     ++window_line_;
 }
 
+// Pan Docs, "Object Priority and Conflicts", DMG: where opaque pixels of two
+// objects overlap, the one with the smaller X wins, then the one earlier in
+// OAM. Only after that is the winner's background-priority bit checked, so a
+// winning object hidden behind the background still hides the objects under it.
+void Ppu::render_objects() noexcept {
+    if ((lcdc_ & kObjectEnable) == 0) {
+        return;
+    }
+    // line_objects_ is in OAM order, so a stable sort by X gives priority order.
+    std::array<std::uint8_t, kMaxObjectsPerLine> order = line_objects_;
+    const auto x_of = [this](std::uint8_t object) {
+        return oam_.at(std::size_t{object} * kObjectBytes + 1);
+    };
+    std::stable_sort(order.begin(), order.begin() + line_object_count_,
+                     [&x_of](std::uint8_t a, std::uint8_t b) { return x_of(a) < x_of(b); });
+
+    ObjectColumns taken{};
+    for (std::uint8_t i = 0; i < line_object_count_; ++i) {
+        draw_object(order.at(i), taken);
+    }
+}
+
+void Ppu::draw_object(std::uint8_t object, ObjectColumns& taken) noexcept {
+    const std::size_t base = std::size_t{object} * kObjectBytes;
+    const std::uint32_t top = oam_.at(base);
+    const std::uint32_t left = oam_.at(base + 1);
+    std::uint32_t tile = oam_.at(base + 2);
+    const std::uint8_t attributes = oam_.at(base + 3);
+    const std::uint32_t height = (lcdc_ & kTallObjects) != 0 ? 16 : 8;
+
+    // Unsigned, so a row above the object wraps to a large value.
+    std::uint32_t row = line_ + kObjectYOffset - top;
+    if (row >= height) {
+        return;  // LCDC bit 2 changed since the OAM scan
+    }
+    if ((attributes & kYFlip) != 0) {
+        row = height - 1 - row;
+    }
+    if (height == 16) {
+        tile &= 0xFEU;  // rows 8-15 run on into the next tile
+    }
+    const auto row_address = static_cast<std::uint16_t>(kVramStart + tile * kTileBytes + row * 2);
+    const std::uint8_t palette = (attributes & kPalette1) != 0 ? obp1_ : obp0_;
+    const std::size_t row_start = static_cast<std::size_t>(line_) * kScreenWidth;
+
+    for (std::uint32_t column = 0; column < 8; ++column) {
+        const std::uint32_t x = left + column - kObjectXOffset;  // wraps when off the left
+        if (x >= kScreenWidth || taken.at(x)) {
+            continue;
+        }
+        const std::uint32_t tile_column = (attributes & kXFlip) != 0 ? 7 - column : column;
+        const std::uint8_t index = tile_pixel(row_address, tile_column);
+        if (index == 0) {
+            continue;  // colour 0 is transparent
+        }
+        taken.at(x) = true;
+        if ((attributes & kBehindBackground) != 0 && bg_index_.at(x) != 0) {
+            continue;
+        }
+        frame_.at(row_start + x) = shade(palette, index);
+    }
+}
+
 // Pan Docs, Rendering, "Mode 3 length". Objects are only fetched while
 // objects are enabled.
 std::uint32_t Ppu::object_penalty() const noexcept {
     constexpr std::uint32_t kFlat = 6;
     constexpr std::uint32_t kAtXZero = 11;
-    if ((lcdc_ & 0x02U) == 0) {
+    if ((lcdc_ & kObjectEnable) == 0) {
         return 0;
     }
     std::uint32_t penalty = 0;

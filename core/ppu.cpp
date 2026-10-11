@@ -9,6 +9,7 @@ namespace core {
 namespace {
 
 constexpr std::uint8_t kLcdEnable = 0x80;
+constexpr std::uint8_t kWindowTileMapHigh = 0x40;
 constexpr std::uint8_t kBgTileMapHigh = 0x08;
 constexpr std::uint8_t kUnsignedTileData = 0x10;
 constexpr std::uint8_t kWindowEnable = 0x20;
@@ -85,7 +86,10 @@ std::uint8_t Ppu::write(std::uint16_t address, std::uint8_t value) noexcept {
                 dot_ = 0;
                 first_line_ = true;
                 mode_ = Mode::HBlank;
-                window_y_reached_ = false;
+                // The first line has no mode 2, where LY = WY is normally checked, so
+                // check it here or a window at WY = 0 would be missing for a frame.
+                window_y_reached_ = wy_ == 0;
+                window_line_ = 0;
                 return update_stat();
             }
             return 0;
@@ -162,6 +166,7 @@ void Ppu::start_line() noexcept {
     if (line_ == kVisibleLines) {
         mode_ = Mode::VBlank;
         window_y_reached_ = false;
+        window_line_ = 0;
         return;
     }
     if (line_ > kVisibleLines) {
@@ -190,13 +195,17 @@ void Ppu::start_line() noexcept {
 void Ppu::start_drawing() noexcept {
     mode_ = Mode::Drawing;
     std::uint32_t dots = kMinDrawingDots + (scx_ & 7U);
-    const bool window_on = (lcdc_ & kWindowEnable) != 0 && (lcdc_ & kBgWindowEnable) != 0;
-    if (window_on && window_y_reached_ && wx_ <= kMaxWindowX) {
+    if (window_visible()) {
         dots += 6;
     }
     dots += object_penalty();
     drawing_dots_ = dots;
     render_line();
+}
+
+bool Ppu::window_visible() const noexcept {
+    const bool enabled = (lcdc_ & kWindowEnable) != 0 && (lcdc_ & kBgWindowEnable) != 0;
+    return enabled && window_y_reached_ && wx_ <= kMaxWindowX;
 }
 
 std::uint16_t Ppu::bg_tile_row(std::uint8_t index, std::uint32_t row) const noexcept {
@@ -249,6 +258,25 @@ void Ppu::render_line() noexcept {
         bg_index_.at(x) = index;
         frame_.at(row_start + x) = shade(bgp_, index);
     }
+
+    // The window: drawn over the background from screen x = WX - 7 to the
+    // right edge, from its own tile map, with no scrolling.
+    if (!window_visible()) {
+        return;
+    }
+    constexpr std::uint32_t kWindowXOffset = 7;
+    const std::uint16_t window_map = (lcdc_ & kWindowTileMapHigh) != 0 ? kMapHigh : kMapLow;
+    const std::uint32_t start = wx_ > kWindowXOffset ? wx_ - kWindowXOffset : 0;
+    const std::uint32_t wy = window_line_;
+    for (std::uint32_t x = start; x < kScreenWidth; ++x) {
+        const std::uint32_t win_x = x + kWindowXOffset - wx_;
+        const std::uint32_t map_offset = (wy / 8) * kMapTiles + win_x / 8;
+        const std::uint8_t tile = vram_.at(window_map + map_offset - kVramStart);
+        const std::uint8_t index = tile_pixel(bg_tile_row(tile, wy % 8), win_x % 8);
+        bg_index_.at(x) = index;
+        frame_.at(row_start + x) = shade(bgp_, index);
+    }
+    ++window_line_;
 }
 
 // Pan Docs, Rendering, "Mode 3 length". Objects are only fetched while

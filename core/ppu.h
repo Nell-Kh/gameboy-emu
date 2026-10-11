@@ -87,6 +87,8 @@ private:
     void start_drawing() noexcept;
     [[nodiscard]] std::uint32_t object_penalty() const noexcept;
     void render_line() noexcept;
+    // True if the window covers part of the current line.
+    [[nodiscard]] bool window_visible() const noexcept;
     // Colour index (0-3) of one pixel of a tile row in VRAM.
     [[nodiscard]] std::uint8_t tile_pixel(std::uint16_t row_address,
                                           std::uint32_t column) const noexcept;
@@ -124,6 +126,10 @@ private:
     bool first_line_ = false;
     // Set from the first line on which LY = WY until the next VBlank.
     bool window_y_reached_ = false;
+    // The window's own line counter: which row of the window the next line
+    // that shows it will draw. It only advances on lines where the window is
+    // actually drawn.
+    std::uint32_t window_line_ = 0;
     bool lyc_equal_ = true;
     bool stat_line_high_ = false;
     // Indices into OAM of the objects found by the last OAM scan.

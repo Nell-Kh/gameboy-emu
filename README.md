@@ -4,11 +4,11 @@
 
 A Game Boy (DMG) emulator in C++20. Work in progress.
 
-**Status:** CPU, timing, memory and MBC1 complete (`v0.2.0`). M3, the PPU, is in progress: its
-mode timing and STAT interrupts are in, and it draws the background layer. Blargg's `cpu_instrs`,
-`instr_timing` and `mem_timing` and 71 Mooneye tests pass in CI. Nothing displays the picture yet
-and there is no sound, so it cannot run a game; see [docs/accuracy.md](docs/accuracy.md) for
-exactly what is and is not covered.
+**Status:** CPU, timing, memory and MBC1 complete (`v0.2.0`). M3, the PPU, is in progress: its mode
+timing and STAT interrupts are in, and it draws the background and window layers. Blargg's
+`cpu_instrs`, `instr_timing` and `mem_timing` and 71 Mooneye tests pass in CI. Nothing displays the
+picture yet and there is no sound, so it cannot run a game; see [docs/accuracy.md](docs/accuracy.md)
+for exactly what is and is not covered.
 
 ## Build and test
 

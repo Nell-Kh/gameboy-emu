@@ -141,7 +141,7 @@ that is a bug in this document.
 - Internal clock only, at the fixed DMG rate. Nothing is ever connected, so every transfer
   shifts in `0xFF`, and a transfer waiting on an external clock never completes.
 
-**PPU (timing only; no pixels yet)**
+**PPU**
 
 - Modes, LY, LYC and the STAT interrupt line advance per dot (`docs/ppu-notes.md`). Mode 3 lasts
   172 dots plus `SCX % 8`, 6 if the window starts on the line, and the Pan Docs object penalty.
@@ -157,9 +157,14 @@ that is a bug in this document.
   the real boot ROM leaves it at is not modelled.
 - The STAT write quirk of the DMG (a write can raise a STAT interrupt as if `FF` had been written
   for one cycle) is not modelled.
-- Only the background is drawn so far, as a scanline renderer (ADR-014): register writes during
-  mode 3 take effect from the next line. The window and objects affect mode 3's length but are not
-  drawn yet.
+- The background and the window are drawn, as a scanline renderer (ADR-014): register writes
+  during mode 3 take effect from the next line. Objects affect mode 3's length but are not drawn
+  yet.
+- **Window quirks:** on hardware WX = 0 shifts the window left by `SCX % 8`, and WX = 166 shows
+  a column at the right edge shifted down a line. Neither is modelled: WX = 0 here just hides the
+  window's first 7 columns, and WX = 166 shows window column 0 at screen x 159.
+- LY = WY is checked at the start of each line's mode 2. The first line after the LCD is switched
+  on has no mode 2, so for that line it is checked at the moment the LCD is switched on.
 
 **Memory and I/O**
 

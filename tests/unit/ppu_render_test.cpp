@@ -16,6 +16,8 @@ constexpr std::uint8_t kLcdOff = 0x00;
 // LCD on, background on, $8000 tile data, $9800 map.
 constexpr std::uint8_t kLcdBg8000 = 0x91;
 constexpr std::uint8_t kIdentityPalette = 0xE4;  // index n -> shade n
+// As above, plus the window on with the $9C00 map.
+constexpr std::uint8_t kLcdBgWindow9c00 = 0xF1;
 
 class PpuRender : public testing::Test {
 protected:
@@ -169,6 +171,120 @@ TEST_F(PpuRender, RegisterChangesDuringMode3ApplyFromTheNextLine) {
     EXPECT_EQ(pixel(0, 0), 3);
     static_cast<void>(ppu.tick(Ppu::kTicksPerLine));
     EXPECT_EQ(pixel(0, 1), 0);
+}
+
+// The window. These use the $9C00 map for it, so the background (on $9800,
+// all tile 0, all colour 0) shows wherever the window does not.
+
+TEST_F(PpuRender, WindowStartsAtWxMinus7OnLineWy) {
+    fill_tile(0x8010, 0xFF, 0xFF);  // tile 1: index 3
+    for (std::uint16_t i = 0; i < 32 * 32; ++i) {
+        ppu.write_vram(static_cast<std::uint16_t>(0x9C00 + i), 1);
+    }
+    set(Ppu::kWx, 47);
+    set(Ppu::kWy, 10);
+    draw_until_line(kLcdBgWindow9c00, 10);
+    EXPECT_EQ(pixel(40, 9), 0);
+    EXPECT_EQ(pixel(39, 10), 0);
+    EXPECT_EQ(pixel(40, 10), 3);
+    EXPECT_EQ(pixel(159, 10), 3);
+}
+
+TEST_F(PpuRender, WindowAtWy0ShowsOnTheFirstLineAfterLcdOn) {
+    fill_tile(0x8010, 0xFF, 0xFF);
+    ppu.write_vram(0x9C00, 1);
+    set(Ppu::kWx, 7);
+    set(Ppu::kWy, 0);
+    draw_until_line(kLcdBgWindow9c00, 0);
+    EXPECT_EQ(pixel(0, 0), 3);
+}
+
+TEST_F(PpuRender, WindowRowsCountFromWy) {
+    ppu.write_vram(0x8010, 0xFF);  // tile 1, row 0: index 1
+    ppu.write_vram(0x8013, 0xFF);  // tile 1, row 1: index 2
+    ppu.write_vram(0x9C00, 1);
+    set(Ppu::kWx, 7);
+    set(Ppu::kWy, 10);
+    draw_until_line(kLcdBgWindow9c00, 11);
+    EXPECT_EQ(pixel(0, 10), 1);
+    EXPECT_EQ(pixel(0, 11), 2);
+}
+
+TEST_F(PpuRender, WindowIgnoresScx) {
+    fill_tile(0x8010, 0xFF, 0xFF);
+    ppu.write_vram(0x9C00, 1);
+    set(Ppu::kWx, 7);
+    set(Ppu::kScx, 3);
+    set(Ppu::kScy, 5);
+    draw_until_line(kLcdBgWindow9c00, 0);
+    EXPECT_EQ(pixel(0, 0), 3);
+    EXPECT_EQ(pixel(7, 0), 3);
+    EXPECT_EQ(pixel(8, 0), 0);
+}
+
+TEST_F(PpuRender, WindowLineOnlyAdvancesOnLinesThatShowIt) {
+    ppu.write_vram(0x8010, 0xFF);  // tile 1, row 0: index 1
+    ppu.write_vram(0x8013, 0xFF);  // tile 1, row 1: index 2
+    ppu.write_vram(0x9C00, 1);
+    set(Ppu::kWx, 7);
+    draw_until_line(kLcdBgWindow9c00, 0);
+    EXPECT_EQ(pixel(0, 0), 1);
+    set(Ppu::kWx, 200);  // hidden on line 1
+    static_cast<void>(ppu.tick(Ppu::kTicksPerLine));
+    EXPECT_EQ(pixel(0, 1), 0);
+    set(Ppu::kWx, 7);  // back on line 2: it carries on from window row 1
+    static_cast<void>(ppu.tick(Ppu::kTicksPerLine));
+    EXPECT_EQ(pixel(0, 2), 2);
+}
+
+TEST_F(PpuRender, Lcdc6ClearSelectsThe9800WindowMap) {
+    fill_tile(0x8010, 0xFF, 0xFF);
+    ppu.write_vram(0x9800, 1);  // window map entry; the background uses $9C00 here
+    set(Ppu::kWx, 15);
+    draw_until_line(0xB9, 0);  // LCD, window ($9800), $8000 data, background ($9C00)
+    EXPECT_EQ(pixel(7, 0), 0);
+    EXPECT_EQ(pixel(8, 0), 3);
+    EXPECT_EQ(pixel(15, 0), 3);
+    EXPECT_EQ(pixel(16, 0), 0);
+}
+
+TEST_F(PpuRender, WindowNeedsLcdc5) {
+    fill_tile(0x8010, 0xFF, 0xFF);
+    ppu.write_vram(0x9C00, 1);
+    set(Ppu::kWx, 7);
+    draw_until_line(0xD1, 0);  // window map bit set, window enable clear
+    EXPECT_EQ(pixel(0, 0), 0);
+}
+
+TEST_F(PpuRender, Lcdc0ClearHidesTheWindowToo) {
+    fill_tile(0x8010, 0xFF, 0xFF);
+    ppu.write_vram(0x9C00, 1);
+    set(Ppu::kWx, 7);
+    draw_until_line(0xF0, 0);
+    EXPECT_EQ(pixel(0, 0), 0);
+}
+
+TEST_F(PpuRender, Wx166ShowsOneColumnAnd167None) {
+    fill_tile(0x8010, 0xFF, 0xFF);
+    ppu.write_vram(0x9C00, 1);
+    set(Ppu::kWx, 166);
+    draw_until_line(kLcdBgWindow9c00, 0);
+    EXPECT_EQ(pixel(158, 0), 0);
+    EXPECT_EQ(pixel(159, 0), 3);
+    set(Ppu::kWx, 167);
+    static_cast<void>(ppu.tick(Ppu::kTicksPerLine));
+    EXPECT_EQ(pixel(159, 1), 0);
+}
+
+TEST_F(PpuRender, WxBelow7CutsOffTheWindowsLeftColumns) {
+    fill_tile(0x8010, 0x55, 0x33);  // indices 0,1,2,3,0,1,2,3
+    ppu.write_vram(0x9C00, 1);
+    set(Ppu::kWx, 4);  // screen x 0 shows window x 3
+    draw_until_line(kLcdBgWindow9c00, 0);
+    EXPECT_EQ(pixel(0, 0), 3);
+    EXPECT_EQ(pixel(1, 0), 0);
+    EXPECT_EQ(pixel(4, 0), 3);
+    EXPECT_EQ(pixel(5, 0), 0);  // window x 8: map column 1, tile 0
 }
 
 }  // namespace

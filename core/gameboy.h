@@ -44,6 +44,9 @@ public:
     // Total clock ticks since power-on.
     [[nodiscard]] std::uint64_t cycles() const noexcept;
 
+    // The screen: 160x144 shades, 0 (white) to 3 (black), row by row.
+    [[nodiscard]] const Ppu::Frame& frame() const noexcept;
+
     // Everything the program has sent over the serial port so far.
     [[nodiscard]] const std::string& serial_output() const noexcept;
 

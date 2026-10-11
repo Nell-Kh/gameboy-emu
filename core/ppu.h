@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 
 namespace core {
@@ -11,8 +12,10 @@ namespace core {
 //
 // One dot is one clock tick. Every line is 456 dots: mode 2 (OAM scan, 80
 // dots), mode 3 (drawing, 172-289 dots), then mode 0 (HBlank) for the rest.
-// Lines 144-153 are mode 1 (VBlank). Pixels are not produced yet; mode 3's
-// length is still computed, because the STAT timing depends on it.
+// Lines 144-153 are mode 1 (VBlank).
+//
+// Each visible line is drawn in one step when mode 3 starts (ADR-014) into a
+// 160x144 frame of shades: 0 is white, 3 is black.
 class Ppu {
 public:
     enum class Mode : std::uint8_t { HBlank = 0, VBlank = 1, OamScan = 2, Drawing = 3 };
@@ -33,6 +36,10 @@ public:
     static constexpr std::uint16_t kVramSize = 0x2000;
     static constexpr std::uint16_t kOamStart = 0xFE00;
     static constexpr std::uint16_t kOamSize = 0xA0;
+
+    static constexpr std::uint32_t kScreenWidth = 160;
+    static constexpr std::uint32_t kScreenHeight = 144;
+    using Frame = std::array<std::uint8_t, std::size_t{kScreenWidth} * kScreenHeight>;
 
     static constexpr std::uint32_t kTicksPerLine = 456;
     static constexpr std::uint32_t kVisibleLines = 144;
@@ -68,6 +75,10 @@ public:
     // Length of mode 3 on the current (or last) drawn line, in dots.
     [[nodiscard]] std::uint32_t drawing_dots() const noexcept;
 
+    // The picture: one shade (0-3) per pixel, row by row. Lines are written
+    // as they are drawn, so mid-frame it holds parts of two frames.
+    [[nodiscard]] const Frame& frame() const noexcept;
+
 private:
     [[nodiscard]] bool lcd_enabled() const noexcept;
     [[nodiscard]] std::uint8_t ly() const noexcept;
@@ -75,11 +86,22 @@ private:
     void start_line() noexcept;
     void start_drawing() noexcept;
     [[nodiscard]] std::uint32_t object_penalty() const noexcept;
+    void render_line() noexcept;
+    // Colour index (0-3) of one pixel of a tile row in VRAM.
+    [[nodiscard]] std::uint8_t tile_pixel(std::uint16_t row_address,
+                                          std::uint32_t column) const noexcept;
+    // VRAM address of row `row` of background/window tile `index`, following
+    // the addressing mode selected by LCDC bit 4.
+    [[nodiscard]] std::uint16_t bg_tile_row(std::uint8_t index, std::uint32_t row) const noexcept;
     // Recomputes LYC = LY and the STAT line; returns kStatBit on a rising edge.
     [[nodiscard]] std::uint8_t update_stat() noexcept;
     [[nodiscard]] bool stat_line() const noexcept;
 
     std::array<std::uint8_t, kVramSize> vram_{};
+    Frame frame_{};
+    // Background/window colour index (before the palette) of each pixel of
+    // the line being drawn; objects need it for their priority bit.
+    std::array<std::uint8_t, kScreenWidth> bg_index_{};
     std::array<std::uint8_t, kOamSize> oam_{};
 
     // Post-boot register values.

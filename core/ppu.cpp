@@ -9,6 +9,8 @@ namespace core {
 namespace {
 
 constexpr std::uint8_t kLcdEnable = 0x80;
+constexpr std::uint8_t kBgTileMapHigh = 0x08;
+constexpr std::uint8_t kUnsignedTileData = 0x10;
 constexpr std::uint8_t kWindowEnable = 0x20;
 constexpr std::uint8_t kTallObjects = 0x04;
 constexpr std::uint8_t kBgWindowEnable = 0x01;
@@ -194,6 +196,59 @@ void Ppu::start_drawing() noexcept {
     }
     dots += object_penalty();
     drawing_dots_ = dots;
+    render_line();
+}
+
+std::uint16_t Ppu::bg_tile_row(std::uint8_t index, std::uint32_t row) const noexcept {
+    constexpr std::uint32_t kTileBytes = 16;
+    constexpr std::uint32_t kSignedBase = 0x9000;
+    std::uint32_t address = 0;
+    if ((lcdc_ & kUnsignedTileData) != 0) {
+        address = kVramStart + index * kTileBytes;
+    } else {
+        address = kSignedBase + static_cast<std::uint32_t>(static_cast<std::int8_t>(index) *
+                                                           static_cast<int>(kTileBytes));
+    }
+    return static_cast<std::uint16_t>(address + row * 2);
+}
+
+// Bit 7 of each byte is the leftmost pixel; the first byte holds bit 0 of the
+// colour index, the second byte bit 1.
+std::uint8_t Ppu::tile_pixel(std::uint16_t row_address, std::uint32_t column) const noexcept {
+    const std::uint32_t bit = 7 - column;
+    const std::uint32_t lo = vram_.at(row_address - kVramStart) >> bit;
+    const std::uint32_t hi = vram_.at(row_address - kVramStart + 1U) >> bit;
+    return static_cast<std::uint8_t>(((hi & 1U) << 1U) | (lo & 1U));
+}
+
+void Ppu::render_line() noexcept {
+    const std::size_t row_start = static_cast<std::size_t>(line_) * kScreenWidth;
+    const auto shade = [](std::uint8_t palette, std::uint8_t index) {
+        return static_cast<std::uint8_t>((palette >> (index * 2U)) & 3U);
+    };
+
+    if ((lcdc_ & kBgWindowEnable) == 0) {
+        // Background and window off: every pixel is colour 0.
+        bg_index_.fill(0);
+        for (std::uint32_t x = 0; x < kScreenWidth; ++x) {
+            frame_.at(row_start + x) = shade(bgp_, 0);
+        }
+        return;
+    }
+
+    constexpr std::uint16_t kMapLow = 0x9800;
+    constexpr std::uint16_t kMapHigh = 0x9C00;
+    constexpr std::uint32_t kMapTiles = 32;
+    const std::uint16_t map = (lcdc_ & kBgTileMapHigh) != 0 ? kMapHigh : kMapLow;
+    const std::uint32_t y = (line_ + scy_) & 0xFFU;
+    for (std::uint32_t x = 0; x < kScreenWidth; ++x) {
+        const std::uint32_t bg_x = (x + scx_) & 0xFFU;
+        const std::uint32_t map_offset = (y / 8) * kMapTiles + bg_x / 8;
+        const std::uint8_t tile = vram_.at(map + map_offset - kVramStart);
+        const std::uint8_t index = tile_pixel(bg_tile_row(tile, y % 8), bg_x % 8);
+        bg_index_.at(x) = index;
+        frame_.at(row_start + x) = shade(bgp_, index);
+    }
 }
 
 // Pan Docs, Rendering, "Mode 3 length". Objects are only fetched while
@@ -289,6 +344,10 @@ bool Ppu::oam_accessible() const noexcept {
 
 std::uint32_t Ppu::drawing_dots() const noexcept {
     return drawing_dots_;
+}
+
+const Ppu::Frame& Ppu::frame() const noexcept {
+    return frame_;
 }
 
 // LY already shows the next line during the last machine cycle of a line

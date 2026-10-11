@@ -66,6 +66,9 @@ public:
     // The requested-and-enabled sources, as a bit mask (IF & IE).
     [[nodiscard]] std::uint8_t pending_interrupts() const noexcept;
 
+    // The PPU's picture.
+    [[nodiscard]] const Ppu::Frame& frame() const noexcept;
+
     // Every byte the program has sent over the serial port.
     [[nodiscard]] const std::string& serial_output() const noexcept;
 

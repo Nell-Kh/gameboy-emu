@@ -157,8 +157,9 @@ that is a bug in this document.
   the real boot ROM leaves it at is not modelled.
 - The STAT write quirk of the DMG (a write can raise a STAT interrupt as if `FF` had been written
   for one cycle) is not modelled.
-- No rendering yet: LCDC bits 0-6, the scroll, window and palette registers affect only mode 3's
-  length so far, not any picture.
+- Only the background is drawn so far, as a scanline renderer (ADR-014): register writes during
+  mode 3 take effect from the next line. The window and objects affect mode 3's length but are not
+  drawn yet.
 
 **Memory and I/O**
 

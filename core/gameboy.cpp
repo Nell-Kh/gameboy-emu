@@ -34,6 +34,10 @@ std::uint64_t GameBoy::cycles() const noexcept {
     return bus_.cycles();
 }
 
+const Ppu::Frame& GameBoy::frame() const noexcept {
+    return bus_.frame();
+}
+
 const std::string& GameBoy::serial_output() const noexcept {
     return bus_.serial_output();
 }

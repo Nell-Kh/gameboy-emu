@@ -273,6 +273,10 @@ std::uint8_t Bus::pending_interrupts() const noexcept {
     return interrupt_flag_ & interrupt_enable_ & kInterruptBits;
 }
 
+const Ppu::Frame& Bus::frame() const noexcept {
+    return ppu_.frame();
+}
+
 const std::string& Bus::serial_output() const noexcept {
     return serial_.output();
 }

@@ -17,6 +17,11 @@
 namespace {
 
 using core::Bus;
+
+// Switches the LCD off, so that video RAM and OAM can be used at any time.
+void lcd_off(Bus& bus) {
+    bus.write8(core::Ppu::kLcdc, 0x00);
+}
 using core::Interrupt;
 
 TEST(Bus, RamStartsZeroed) {
@@ -100,6 +105,7 @@ TEST(Bus, EchoRamMirrorsWorkRamBothWays) {
 
 TEST(Bus, EchoRamCoversExactlyE000ToFdff) {
     Bus bus;
+    lcd_off(bus);
     bus.write8(0xC000, 0x11);
     bus.write8(0xDDFF, 0x22);
     EXPECT_EQ(bus.read8(0xE000), 0x11);
@@ -123,6 +129,7 @@ TEST(Bus, UnusableRegionReadsZeroAndIgnoresWrites) {
 
 TEST(Bus, SpriteTableIsWritableUpToFe9f) {
     Bus bus;
+    lcd_off(bus);
     bus.write8(0xFE9F, 0x77);
     EXPECT_EQ(bus.read8(0xFE9F), 0x77);
 }
@@ -154,10 +161,9 @@ TEST(Bus, UnemulatedRegistersReadTheirMissingAndWriteOnlyBitsAsOne) {
         std::uint16_t address;
         std::uint8_t ones;
     };
-    for (const Case c :
-         {Case{0xFF10, 0x80}, Case{0xFF11, 0x3F}, Case{0xFF13, 0xFF}, Case{0xFF14, 0xBF},
-          Case{0xFF1A, 0x7F}, Case{0xFF1C, 0x9F}, Case{0xFF20, 0xFF}, Case{0xFF23, 0xBF},
-          Case{0xFF26, 0x70}, Case{0xFF41, 0x80}}) {
+    for (const Case c : {Case{0xFF10, 0x80}, Case{0xFF11, 0x3F}, Case{0xFF13, 0xFF},
+                         Case{0xFF14, 0xBF}, Case{0xFF1A, 0x7F}, Case{0xFF1C, 0x9F},
+                         Case{0xFF20, 0xFF}, Case{0xFF23, 0xBF}, Case{0xFF26, 0x70}}) {
         bus.write8(c.address, 0x00);
         EXPECT_EQ(bus.read8(c.address), c.ones) << "address " << c.address;
         bus.write8(c.address, 0xFF);
@@ -167,7 +173,7 @@ TEST(Bus, UnemulatedRegistersReadTheirMissingAndWriteOnlyBitsAsOne) {
 
 TEST(Bus, FullyReadableUnemulatedRegistersReadBackAsWritten) {
     Bus bus;
-    for (const std::uint16_t address : {0xFF12, 0xFF24, 0xFF42, 0xFF47}) {
+    for (const std::uint16_t address : {0xFF12, 0xFF24}) {
         bus.write8(address, 0x00);
         EXPECT_EQ(bus.read8(address), 0x00) << "address " << address;
         bus.write8(address, 0xA5);
@@ -195,6 +201,7 @@ void run_oam_dma(Bus& bus, std::uint8_t page) {
 
 TEST(Bus, OamDmaCopies160BytesIntoTheSpriteTable) {
     Bus bus;
+    lcd_off(bus);
     for (std::uint16_t i = 0; i < 0xA0; ++i) {
         bus.write8(static_cast<std::uint16_t>(0xC100 + i), static_cast<std::uint8_t>(i ^ 0x5A));
     }
@@ -206,6 +213,7 @@ TEST(Bus, OamDmaCopies160BytesIntoTheSpriteTable) {
 
 TEST(Bus, OamDmaCanCopyFromTheCartridgeRom) {
     Bus bus;
+    lcd_off(bus);
     bus.load_rom(test::make_rom({0x11, 0x22, 0x33}, 0x4000));
     run_oam_dma(bus, 0x40);
     EXPECT_EQ(bus.read8(0xFE00), 0x11);
@@ -214,6 +222,7 @@ TEST(Bus, OamDmaCanCopyFromTheCartridgeRom) {
 
 TEST(Bus, OamDmaFromE000UpReadsWorkRam) {
     Bus bus;
+    lcd_off(bus);
     bus.write8(0xDE00, 0x77);
     bus.write8(0xDF9F, 0x88);
     run_oam_dma(bus, 0xFE);
@@ -224,6 +233,7 @@ TEST(Bus, OamDmaFromE000UpReadsWorkRam) {
 
 TEST(Bus, OamReadsFFAndIgnoresWritesWhileTheDmaRuns) {
     Bus bus;
+    lcd_off(bus);
     bus.write8(0xFE10, 0x42);
     bus.write8(core::OamDma::kRegister, 0xC0);
     bus.tick(4);  // cycle 1: still accessible
@@ -381,6 +391,36 @@ TEST(Bus, TimerOverflowRaisesTheTimerInterrupt) {
     EXPECT_FALSE(bus.interrupt_requested(Interrupt::Timer));
     bus.tick(4);
     EXPECT_TRUE(bus.interrupt_requested(Interrupt::Timer));
+}
+
+TEST(Bus, VideoRamAndOamFollowThePpuAccessRules) {
+    Bus bus;
+    // Post-boot: line 0, mode 2. VRAM is open, OAM is not.
+    bus.write8(0x8000, 0x12);
+    bus.write8(0xFE00, 0x34);
+    EXPECT_EQ(bus.read8(0x8000), 0x12);
+    EXPECT_EQ(bus.read8(0xFE00), 0xFF);
+    bus.tick(80);  // mode 3: neither
+    EXPECT_EQ(bus.read8(0x8000), 0xFF);
+    bus.tick(172);  // mode 0: both
+    EXPECT_EQ(bus.read8(0x8000), 0x12);
+    EXPECT_EQ(bus.read8(0xFE00), 0x00);
+}
+
+TEST(Bus, LcdRegistersAreRoutedToThePpu) {
+    Bus bus;
+    bus.write8(core::Ppu::kStat, 0xFF);
+    EXPECT_EQ(bus.read8(core::Ppu::kStat), 0xFE);  // bits 0-2 read-only: LYC = LY, mode 2
+    bus.write8(core::Ppu::kScx, 0x42);
+    EXPECT_EQ(bus.read8(core::Ppu::kScx), 0x42);
+}
+
+TEST(Bus, StatInterruptsReachIf) {
+    Bus bus;
+    bus.write8(Bus::kInterruptFlag, 0x00);
+    bus.write8(core::Ppu::kStat, 0x08);
+    bus.tick(252);
+    EXPECT_TRUE(bus.interrupt_requested(Interrupt::LcdStat));
 }
 
 TEST(Bus, TheStartOfVblankRequestsTheVblankInterrupt) {

@@ -227,6 +227,21 @@ INSTANTIATE_TEST_SUITE_P(Mbc1, MooneyeRom,
                              return std::string(info.param.test_name);
                          });
 
+// PPU mode timing, the STAT interrupt line and the access rules
+// (docs/ppu-notes.md, section 7: the nine M3 targets).
+INSTANTIATE_TEST_SUITE_P(
+    Ppu, MooneyeRom,
+    testing::Values(Rom{"intr_2_0_timing", "acceptance/ppu/intr_2_0_timing.gb"},
+                    Rom{"intr_2_mode0_timing", "acceptance/ppu/intr_2_mode0_timing.gb"},
+                    Rom{"intr_2_mode3_timing", "acceptance/ppu/intr_2_mode3_timing.gb"},
+                    Rom{"intr_2_oam_ok_timing", "acceptance/ppu/intr_2_oam_ok_timing.gb"},
+                    Rom{"intr_1_2_timing", "acceptance/ppu/intr_1_2_timing-GS.gb"},
+                    Rom{"vblank_stat_intr", "acceptance/ppu/vblank_stat_intr-GS.gb"},
+                    Rom{"stat_irq_blocking", "acceptance/ppu/stat_irq_blocking.gb"},
+                    Rom{"stat_lyc_onoff", "acceptance/ppu/stat_lyc_onoff.gb"},
+                    Rom{"hblank_ly_scx_timing", "acceptance/ppu/hblank_ly_scx_timing-GS.gb"}),
+    [](const testing::TestParamInfo<Rom>& info) { return std::string(info.param.test_name); });
+
 INSTANTIATE_TEST_SUITE_P(Bits, MooneyeRom,
                          testing::Values(Rom{"unused_hwio", "acceptance/bits/unused_hwio-GS.gb"},
                                          Rom{"mem_oam", "acceptance/bits/mem_oam.gb"},

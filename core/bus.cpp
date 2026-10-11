@@ -32,7 +32,13 @@ constexpr bool in_cartridge_ram(std::uint16_t address) noexcept {
     return address >= kCartridgeRamStart && address <= kCartridgeRamEnd;
 }
 
-constexpr std::uint16_t kOamStart = 0xFE00;
+constexpr std::uint16_t kOamStart = Ppu::kOamStart;
+constexpr std::uint16_t kVramStart = Ppu::kVramStart;
+constexpr std::uint16_t kVramEnd = Ppu::kVramStart + Ppu::kVramSize - 1;
+
+constexpr bool in_vram(std::uint16_t address) noexcept {
+    return address >= kVramStart && address <= kVramEnd;
+}
 constexpr std::uint16_t kTicksPerMachineCycle = 4;
 
 constexpr bool in_oam(std::uint16_t address) noexcept {
@@ -84,8 +90,6 @@ constexpr std::array<std::uint8_t, 0x80> make_io_read_mask() noexcept {
     mask[0x20] = 0xFF;  // NR41
     mask[0x23] = 0xBF;  // NR44
     mask[0x26] = 0x70;  // NR52
-    // STAT: bit 7 does not exist.
-    mask[0x41] = 0x80;
     return mask;
 }
 
@@ -112,15 +116,21 @@ std::uint8_t Bus::read8(std::uint16_t address) const noexcept {
     if (in_cartridge_ram(address)) {
         return cartridge_ ? cartridge_->read_ram(address) : kOpenBus;
     }
+    if (in_vram(address)) {
+        return ppu_.read_vram(address);
+    }
     address = resolve_echo(address);
-    if (in_oam(address) && dma_.oam_blocked()) {
-        return kOpenBus;
+    if (in_oam(address)) {
+        return dma_.oam_blocked() ? kOpenBus : ppu_.read_oam(address);
     }
     if (in_unusable_region(address)) {
         return kUnusableValue;
     }
     if (is_unmapped_io(address)) {
         return kOpenBus;
+    }
+    if (Ppu::is_register(address)) {
+        return ppu_.read(address);
     }
     switch (address) {
         case Serial::kData:
@@ -131,9 +141,6 @@ std::uint8_t Bus::read8(std::uint16_t address) const noexcept {
         case Timer::kTma:
         case Timer::kTac:
             return timer_.read(address);
-        case Ppu::kLcdc:
-        case Ppu::kLy:
-            return ppu_.read(address);
         case OamDma::kRegister:
             return dma_.read();
         case kInterruptFlag:
@@ -163,9 +170,22 @@ void Bus::write8(std::uint16_t address, std::uint8_t value) {
         }
         return;
     }
+    if (in_vram(address)) {
+        ppu_.write_vram(address, value);
+        return;
+    }
     address = resolve_echo(address);
-    if (in_unusable_region(address) || is_unmapped_io(address) ||
-        (in_oam(address) && dma_.oam_blocked())) {
+    if (in_oam(address)) {
+        if (!dma_.oam_blocked()) {
+            ppu_.write_oam(address, value);
+        }
+        return;
+    }
+    if (in_unusable_region(address) || is_unmapped_io(address)) {
+        return;
+    }
+    if (Ppu::is_register(address)) {
+        interrupt_flag_ |= ppu_.write(address, value);
         return;
     }
     switch (address) {
@@ -178,10 +198,6 @@ void Bus::write8(std::uint16_t address, std::uint8_t value) {
         case Timer::kTma:
         case Timer::kTac:
             timer_.write(address, value);
-            break;
-        case Ppu::kLcdc:
-        case Ppu::kLy:
-            ppu_.write(address, value);
             break;
         case OamDma::kRegister:
             dma_.write(value);
@@ -205,9 +221,7 @@ void Bus::tick(std::uint32_t t_cycles) noexcept {
         dma_ticks_ -= kTicksPerMachineCycle;
         step_dma();
     }
-    if (ppu_.tick(t_cycles)) {
-        request_interrupt(Interrupt::VBlank);
-    }
+    interrupt_flag_ |= ppu_.tick(t_cycles);
     if (timer_.tick(t_cycles)) {
         request_interrupt(Interrupt::Timer);
     }
@@ -239,12 +253,15 @@ std::uint8_t Bus::dma_read(std::uint16_t address) const noexcept {
     if (in_cartridge_ram(address)) {
         return cartridge_ ? cartridge_->read_ram(address) : kOpenBus;
     }
+    if (in_vram(address)) {
+        return ppu_.dma_read_vram(address);
+    }
     return memory_[address];
 }
 
 void Bus::step_dma() noexcept {
     if (const auto source = dma_.step()) {
-        memory_[kOamStart + (*source & 0xFFU)] = dma_read(*source);
+        ppu_.dma_write_oam(static_cast<std::uint8_t>(*source & 0xFFU), dma_read(*source));
     }
 }
 

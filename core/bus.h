@@ -21,11 +21,12 @@ namespace core {
 // and is routed to whatever lives at that address.
 //
 //   0x0000-0x7FFF  cartridge ROM; writes go to the cartridge's mapper
-//   0x8000-0x9FFF  video RAM (plain memory for now)
+//   0x8000-0x9FFF  video RAM, owned by the PPU; unreadable during mode 3
 //   0xA000-0xBFFF  cartridge RAM, if the cartridge has any
 //   0xC000-0xDFFF  work RAM
 //   0xE000-0xFDFF  echo RAM, a mirror of 0xC000-0xDDFF
-//   0xFE00-0xFE9F  sprite table (OAM); reads 0xFF while an OAM DMA runs
+//   0xFE00-0xFE9F  sprite table (OAM), owned by the PPU; reads 0xFF during
+//                  modes 2 and 3 and while an OAM DMA runs
 //   0xFEA0-0xFEFF  not connected: reads 0x00, ignores writes
 //   0xFF00-0xFF7F  I/O registers; addresses with no register read 0xFF
 //   0xFF80-0xFFFE  high RAM

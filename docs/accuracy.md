@@ -70,6 +70,13 @@ Blargg's timing ROMs, from the same repository:
 | `emulator-only/mbc1/bits_bank1`, `bits_bank2`, `bits_mode`, `bits_ramg` | which bits of each MBC1 register count | Passed |
 | `emulator-only/mbc1/rom_512kb` to `rom_16Mb` (6 ROMs) | ROM banking at every MBC1 ROM size | Passed |
 | `emulator-only/mbc1/ram_64kb`, `ram_256kb` | RAM banking and enabling | Passed |
+| `ppu/intr_2_0_timing`, `intr_2_mode0_timing`, `intr_2_mode3_timing` | mode 2, 3 and 0 boundaries, through STAT interrupts and the mode bits | Passed |
+| `ppu/intr_2_oam_ok_timing` | the dot OAM becomes readable after mode 2 | Passed |
+| `ppu/intr_1_2_timing-GS` | from the mode 1 STAT interrupt to the next mode 2 | Passed |
+| `ppu/vblank_stat_intr-GS` | the mode 2 select also fires when VBlank starts | Passed |
+| `ppu/stat_irq_blocking` | STAT interrupts only on a rising edge of the shared line | Passed |
+| `ppu/stat_lyc_onoff` | the LYC = LY bit while the LCD is switched off and on | Passed |
+| `ppu/hblank_ly_scx_timing-GS` | the `SCX % 8` delay in mode 3, against the LY change | Passed |
 | `bits/unused_hwio-GS` | unused and write-only I/O bits read as 1; unmapped I/O reads `0xFF` | Passed |
 | `bits/mem_oam` | the sprite table (OAM) is readable and writable | Passed |
 | `bits/reg_f` | the low four bits of F are always 0 | Passed |
@@ -94,7 +101,10 @@ To reproduce one by hand:
     DMG.
   - `serial/boot_sclk_align-dmgABCmgb`: the phase of the serial clock the boot ROM leaves behind is
     not modelled.
-  - All twelve `ppu/` tests: they need STAT, the PPU modes and their timing (M3).
+  - `ppu/intr_2_mode0_timing_sprites`: the object part of the mode 3 length formula is
+    implemented from the Pan Docs but does not match this test in every layout yet.
+  - `ppu/lcdon_timing-GS`, `ppu/lcdon_write_timing-GS`: the first line after the LCD is switched on
+    starts in mode 0 as on hardware, but its 2-dot lateness is not modelled.
 - Anything involving the screen or sound (M3, M5).
 
 ## Known simplifications
@@ -131,26 +141,31 @@ that is a bug in this document.
 - Internal clock only, at the fixed DMG rate. Nothing is ever connected, so every transfer
   shifts in `0xFF`, and a transfer waiting on an external clock never completes.
 
-**PPU (only the line clock exists, ADR-010)**
+**PPU (timing only; no pixels yet)**
 
-- LY advances one line every 456 ticks through lines 0-153 while the LCD is on and is 0 while it
-  is off. Not modelled: the PPU modes and their timing, line 153 reading as 0 early, LY=LYC and
-  the STAT register.
-- LCDC is a plain read-write register; none of its bits except "LCD on" has any effect yet.
+- Modes, LY, LYC and the STAT interrupt line advance per dot (`docs/ppu-notes.md`). Mode 3 lasts
+  172 dots plus `SCX % 8`, 6 if the window starts on the line, and the Pan Docs object penalty.
+  The object penalty is not exact in every layout (`intr_2_mode0_timing_sprites` fails).
+- LY shows the next line's number during the last 4 dots of each line; this is what
+  `hblank_ly_scx_timing-GS` needs. LYC is compared with the line itself, not with that early value.
 - **Line 153:** other emulators report that LY reads 0 from dot 4 of line 153 and that LYC is
   compared against 0 for the rest of that line. Not modelled; no M3 target needs it
   (`docs/ppu-notes.md`, section 2).
-- At power-on the LCD is on and LY starts at line 0. The exact line position the real boot ROM
-  leaves behind is not modelled.
-- The VBlank interrupt is requested at the first tick of line 144. No rendering, no STAT
-  interrupt, no video-memory access rules.
+- The first line after the LCD is switched on starts in mode 0 and goes straight to mode 3, but
+  without the 2-dot lateness the `lcdon_*` tests measure.
+- At power-on the LCD is on and the PPU is at the start of line 0 in mode 2. The exact position
+  the real boot ROM leaves it at is not modelled.
+- The STAT write quirk of the DMG (a write can raise a STAT interrupt as if `FF` had been written
+  for one cycle) is not modelled.
+- No rendering yet: LCDC bits 0-6, the scroll, window and palette registers affect only mode 3's
+  length so far, not any picture.
 
 **Memory and I/O**
 
 - **Memory map:** echo RAM (`0xE000-0xFDFF`) mirrors work RAM and the unusable region
-  (`0xFEA0-0xFEFF`) reads `0x00` and ignores writes. Video RAM, cartridge RAM and OAM are plain
-  memory: there are no PPU access restrictions, and on hardware the unusable region also reads
-  differently while the PPU is scanning OAM.
+  (`0xFEA0-0xFEFF`) reads `0x00` and ignores writes; on hardware the unusable region also reads
+  differently while the PPU is scanning OAM, which is not modelled. Video RAM is blocked during
+  mode 3 and OAM during modes 2 and 3 (blocked reads return `FF`, writes are ignored).
 - **OAM DMA** copies one byte per machine cycle and blocks OAM (reads `0xFF`, writes ignored) from
   the second cycle after the write to `0xFF46` until 160 cycles later, as the Mooneye tests check.
   Not modelled: on hardware the CPU also cannot use the bus the DMA is reading from (ROM, work RAM)
@@ -160,10 +175,9 @@ that is a bug in this document.
   multicarts are not detected. Battery-backed RAM works but is lost when the program exits
   (`.sav` files are M4). The header checksum is not checked; the real boot ROM would refuse to
   start a cartridge with a bad one.
-- **I/O registers:** SB, SC, DIV, TIMA, TMA, TAC, LCDC, LY, IF and IE are emulated. Addresses
-  with no register read `0xFF`. Every other register (joypad, sound, the rest of the PPU) is plain
-  memory whose unused and write-only bits read as 1. Those registers start at 0, not at their
-  post-boot values, and have no side effects: the joypad always reads "no buttons pressed", STAT
-  does not report the PPU mode, and switching sound off in NR52 does not block or clear the other
-  sound registers.
-- **Boot ROM:** not run. The CPU registers, DIV, IF and LCDC start at their post-boot values.
+- **I/O registers:** serial, timer, interrupt and all LCD registers (`FF40`-`FF4B`) are emulated.
+  Addresses with no register read `0xFF`. The joypad and sound registers are plain memory whose
+  unused and write-only bits read as 1. They start at 0, not at their post-boot values, and have
+  no side effects: the joypad always reads "no buttons pressed", and switching sound off in NR52
+  does not block or clear the other sound registers.
+- **Boot ROM:** not run. The CPU registers, DIV, IF, LCDC and BGP start at their post-boot values.

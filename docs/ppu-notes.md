@@ -100,6 +100,11 @@ Whatever mode 3 gains, mode 0 loses: the line stays 456 dots.
 (not mode 2) and goes straight to mode 3, and it runs 2 dots late; lines 1 and 2 have normal
 timing. The expected LY, STAT, OAM and VRAM values per cycle are tabulated in that test.
 
+**LY changes one machine cycle early (test).** `hblank_ly_scx_timing-GS` measures the time from
+the mode 0 STAT interrupt to the LY change for every `SCX % 8`. It only passes if LY shows the
+next line's number during the last 4 dots of each line. LYC is still compared with the line
+itself; no target test distinguishes the two.
+
 **Line 153.** Other emulators report that on line 153 LY reads 0 from dot 4 on, and LYC is
 compared against 0 for the rest of that line. This is not on the Pan Docs pages above. Checked
 against the M3 targets: **not needed by any of them.** `intr_1_2_timing-GS` measures from the

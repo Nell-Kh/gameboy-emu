@@ -82,7 +82,10 @@ games depend on it (*Road Rash*, *Xerd no Densetsu*). Not targeted in M3; listed
 | 0 | HBlank: waits for the end of the line | 376 minus mode 3 | VRAM and OAM |
 | 1 | VBlank: lines 144-153 | 4560 (10 lines) | VRAM and OAM |
 
-**Length of mode 3.** 172 dots minimum (160 pixels plus 12 dots of start-up fetches), plus:
+**Length of mode 3.** Source: Pan Docs, [Rendering, section "Mode 3
+length"](https://gbdev.io/pandocs/Rendering.html#mode-3-length); the object part is what
+`intr_2_mode0_timing_sprites` measures. 172 dots minimum (160 pixels plus 12 dots of start-up
+fetches), plus:
 
 - `SCX % 8` dots at the start of the line.
 - 6 dots if the window starts on this line.
@@ -96,6 +99,14 @@ Whatever mode 3 gains, mode 0 loses: the line stays 456 dots.
 **First line after the LCD is switched on (test).** From `lcdon_timing-GS`: line 0 starts in mode 0
 (not mode 2) and goes straight to mode 3, and it runs 2 dots late; lines 1 and 2 have normal
 timing. The expected LY, STAT, OAM and VRAM values per cycle are tabulated in that test.
+
+**Line 153.** Other emulators report that on line 153 LY reads 0 from dot 4 on, and LYC is
+compared against 0 for the rest of that line. This is not on the Pan Docs pages above. Checked
+against the M3 targets: **not needed by any of them.** `intr_1_2_timing-GS` measures from the
+mode 1 STAT interrupt at line 144 to the mode 2 STAT interrupt at line 0 and never reads LY or
+uses LYC near the end of the frame; `stat_lyc_onoff` compares LYC with LY = 144 (`90`) and with
+LY = 0 after switching the LCD on, never with line 153. No other `ppu/` test mentions line 153.
+It is left out and listed in accuracy.md.
 
 **While the LCD is off:** LY reads 0 and the STAT mode reads 0. The LYC = LY bit keeps its last
 value and is not updated, even if LYC changes; switching the LCD back on resumes the comparison
@@ -174,9 +185,12 @@ with the reference images use `FF`, `AA`, `55`, `00` for shades 0-3 (dmg-acid2 R
 
 ## 6. Design for M3
 
-- **Scanline renderer.** The whole line is drawn at one moment (the start of mode 3), using the
-  registers as they are then. The brief chose this; dmg-acid2 is built for it ("does not perform
-  register writes during mode 3").
+- **Scanline renderer** (ADR-014). The whole line is drawn at one moment (the start of mode 3),
+  using the registers as they are then. The brief chose this; dmg-acid2 is built for it ("does
+  not perform register writes during mode 3").
+- **STAT is one signal.** The four conditions are ORed into a single internal line and the
+  interrupt is requested on its rising edge only, as in section 3. Nothing requests a STAT
+  interrupt directly.
 - **Mode timing is still per dot.** The PPU keeps counting dots inside each `Bus::tick(4)`, and
   mode 3's length comes from the formula in section 2, so STAT, interrupts and the access rules
   move at the right dot even though pixels are produced all at once.
@@ -209,13 +223,28 @@ the c-sp collection already downloaded (ADR-011).
 | `lcdon_timing-GS` | The odd first line after LCD on, to the dot | stretch |
 | `lcdon_write_timing-GS` | Same, for writes | stretch |
 
-**Tetris playable** needs the joypad (`FF00`) and the SDL window, also in M3.
+**Tetris playable** needs the joypad (`FF00`) and the SDL window, also in M3. SDL2 is linked into
+`app` only; `core` stays without dependencies. CI builds `app` on Linux and macOS but never opens
+the window: `--headless` is the CI path.
 
-## 8. Decisions needed before coding
+**M3 exit:** dmg-acid2 pixel-identical in CI, the nine "yes" tests above green in CI, Tetris
+playable in the SDL window.
 
-1. **Reading the reference PNG.** Comparing against `dmg-acid2-dmg.png` means decoding a PNG in
-   the test. The brief allows `stb_image_write` (writing PNGs). Proposed: also use `stb_image`
-   from the same project, public domain, test code only, to read it.
-2. **Line 153 (unconfirmed).** Other emulators report that LY reads 0 for most of line 153. It is
-   not on the Pan Docs pages above; `intr_1_2_timing-GS` or `stat_lyc_onoff` may expose it. It
-   is not implemented until a test shows it.
+**Order of work.** Timing first, pixels last, because timing bugs are invisible once there is a
+picture to look at:
+
+1. Mode and dot state machine, the STAT line, the VRAM and OAM access rules.
+2. The nine "yes" Mooneye tests green.
+3. Background, then window, then objects.
+4. dmg-acid2 pixel-identical.
+5. Joypad and the SDL window; Tetris.
+
+## 8. Decisions (settled in review)
+
+1. **Reading the reference PNG: `stb_image`, test code only.** It goes under
+   `tests/third_party/` with its licence file, is never linked into `core` or `app`, and its
+   version is pinned in an ADR. The test converts the reference's four colours to shades 0-3 once
+   and compares shades against the framebuffer, so it never depends on the palette the SDL window
+   uses. On a mismatch it writes the actual frame as a PNG next to the reference and prints the
+   first differing (x, y) with both values.
+2. **Line 153: left out**, because no M3 target needs it (section 2). Listed in accuracy.md.

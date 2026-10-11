@@ -183,3 +183,17 @@ record that supersedes the old one, not by editing history.
 - **Consequences:** All four tests pass. `Cpu::step()` can return 0 ticks for the instruction right
   after a wake-up with IME off, because its fetch was counted in the last halted step. Unit tests
   pin both wake-up timings and the EI-then-HALT return address.
+
+## ADR-014: The PPU draws a whole scanline at once, with mode timing kept per dot
+
+- **Context:** A PPU can be modelled as a pixel FIFO, one pixel per dot, or as a scanline renderer
+  that draws each line in one go. The brief chose the scanline renderer and said to switch only if
+  a chosen test ROM needs the FIFO. dmg-acid2 does not write registers during mode 3, and the
+  Mooneye `ppu/` targets measure mode and interrupt timing, not pixels.
+- **Decision:** Each line is drawn in one step at the start of mode 3, from the registers as they
+  are then. Mode changes, the STAT interrupt line, LY, LYC and the VRAM and OAM access rules still
+  advance per dot, with mode 3's length computed from the Pan Docs formula
+  (`docs/ppu-notes.md`, section 2). Supersedes nothing.
+- **Consequences:** Much simpler than a FIFO and fast. Register writes during mode 3 (mid-line
+  scroll, palette or window changes) only take effect from the next line, which a few games and
+  the Mealybug tests rely on; `docs/accuracy.md` lists this.

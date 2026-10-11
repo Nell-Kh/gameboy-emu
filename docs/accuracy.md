@@ -137,6 +137,9 @@ that is a bug in this document.
   is off. Not modelled: the PPU modes and their timing, line 153 reading as 0 early, LY=LYC and
   the STAT register.
 - LCDC is a plain read-write register; none of its bits except "LCD on" has any effect yet.
+- **Line 153:** other emulators report that LY reads 0 from dot 4 of line 153 and that LYC is
+  compared against 0 for the rest of that line. Not modelled; no M3 target needs it
+  (`docs/ppu-notes.md`, section 2).
 - At power-on the LCD is on and LY starts at line 0. The exact line position the real boot ROM
   leaves behind is not modelled.
 - The VBlank interrupt is requested at the first tick of line 144. No rendering, no STAT

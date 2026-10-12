@@ -126,9 +126,9 @@ that is a bug in this document.
 
 **CPU**
 
-- **STOP:** the CPU sleeps until a joypad interrupt is requested and DIV is reset, but the clock
-  keeps running. On hardware the oscillator stops, so the timer would freeze. There is also no
-  joypad yet, so nothing in a real program can end a STOP.
+- **STOP:** resets DIV and the CPU sleeps until a joypad interrupt is requested (a button
+  pressed in a selected group), but the clock keeps running. On hardware the oscillator stops, so
+  the timer would freeze.
 - **HALT** is modelled as a run of opcode fetches: waking costs no extra cycle, and EI directly
   before HALT with an interrupt already pending services it and returns to the HALT (ADR-013).
   The exact timing of that EI-then-HALT case is not covered by any test ROM.
@@ -196,9 +196,12 @@ that is a bug in this document.
   multicarts are not detected. Battery-backed RAM works but is lost when the program exits
   (`.sav` files are M4). The header checksum is not checked; the real boot ROM would refuse to
   start a cartridge with a bad one.
-- **I/O registers:** serial, timer, interrupt and all LCD registers (`FF40`-`FF4B`) are emulated.
-  Addresses with no register read `0xFF`. The joypad and sound registers are plain memory whose
+- **I/O registers:** joypad, serial, timer, interrupt and all LCD registers (`FF40`-`FF4B`) are
+  emulated. Addresses with no register read `0xFF`. The sound registers are plain memory whose
   unused and write-only bits read as 1. They start at 0, not at their post-boot values, and have
-  no side effects: the joypad always reads "no buttons pressed", and switching sound off in NR52
-  does not block or clear the other sound registers.
+  no side effects: switching sound off in NR52 does not block or clear the other sound registers.
+- **Joypad:** a button press shows in `FF00` and requests the joypad interrupt the moment the
+  frontend reports it. Not modelled: switch bounce, which on hardware can request the interrupt
+  several times per press, and the few cycles a newly selected group takes to show. Opposite
+  d-pad directions held at once, which a real d-pad cannot do, are left to the frontend to prevent.
 - **Boot ROM:** not run. The CPU registers, DIV, IF, LCDC and BGP start at their post-boot values.

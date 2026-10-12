@@ -18,6 +18,10 @@ std::string GameBoy::load_rom(std::span<const std::uint8_t> rom) {
     return result.error;
 }
 
+void GameBoy::set_button(Joypad::Button button, bool pressed) noexcept {
+    bus_.set_button(button, pressed);
+}
+
 std::uint32_t GameBoy::step() {
     return cpu_.step();
 }

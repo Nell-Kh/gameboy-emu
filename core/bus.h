@@ -9,6 +9,7 @@
 
 #include "core/cartridge/cartridge.h"
 #include "core/interrupts.h"
+#include "core/joypad.h"
 #include "core/oam_dma.h"
 #include "core/ppu.h"
 #include "core/serial.h"
@@ -66,6 +67,10 @@ public:
     // The requested-and-enabled sources, as a bit mask (IF & IE).
     [[nodiscard]] std::uint8_t pending_interrupts() const noexcept;
 
+    // Presses or releases a joypad button; requests the joypad interrupt if
+    // that pulls a selected input line low.
+    void set_button(Joypad::Button button, bool pressed) noexcept;
+
     // The PPU's picture.
     [[nodiscard]] const Ppu::Frame& frame() const noexcept;
 
@@ -80,6 +85,7 @@ private:
 
     std::unique_ptr<Cartridge> cartridge_;
     std::array<std::uint8_t, kAddressSpace> memory_{};
+    Joypad joypad_;
     Serial serial_;
     Timer timer_;
     Ppu ppu_;

@@ -71,9 +71,6 @@ constexpr bool is_unmapped_io(std::uint16_t address) noexcept {
 // table holds those bits for each address in 0xFF00-0xFF7F.
 constexpr std::array<std::uint8_t, 0x80> make_io_read_mask() noexcept {
     std::array<std::uint8_t, 0x80> mask{};
-    // Joypad: bits 6-7 do not exist. With no buttons pressed the four input
-    // lines (bits 0-3) read 1.
-    mask[0x00] = 0xCF;
     // Sound. Lengths and frequencies are write-only; several bits are unused.
     mask[0x10] = 0x80;  // NR10
     mask[0x11] = 0x3F;  // NR11
@@ -133,6 +130,8 @@ std::uint8_t Bus::read8(std::uint16_t address) const noexcept {
         return ppu_.read(address);
     }
     switch (address) {
+        case Joypad::kRegister:
+            return joypad_.read();
         case Serial::kData:
         case Serial::kControl:
             return serial_.read(address);
@@ -189,6 +188,9 @@ void Bus::write8(std::uint16_t address, std::uint8_t value) {
         return;
     }
     switch (address) {
+        case Joypad::kRegister:
+            interrupt_flag_ |= joypad_.write(value);
+            break;
         case Serial::kData:
         case Serial::kControl:
             serial_.write(address, value);
@@ -228,6 +230,10 @@ void Bus::tick(std::uint32_t t_cycles) noexcept {
     if (serial_.tick(t_cycles)) {
         request_interrupt(Interrupt::Serial);
     }
+}
+
+void Bus::set_button(Joypad::Button button, bool pressed) noexcept {
+    interrupt_flag_ |= joypad_.set_pressed(button, pressed);
 }
 
 std::uint64_t Bus::cycles() const noexcept {

@@ -86,6 +86,25 @@ TEST(GameBoy, LoadRomRejectsAnUnusableImageAndKeepsTheOldCartridge) {
     EXPECT_EQ(gb.bus().read8(kEntry), 0x3E);
 }
 
+TEST(GameBoy, AButtonPressEndsStop) {
+    GameBoy gb;
+    ASSERT_EQ(gb.load_rom(test::make_rom({
+                  0x10, 0x00,  // STOP
+                  0x00,        // NOP
+              })),
+              "");
+    gb.step();
+    ASSERT_TRUE(gb.cpu().stopped());
+    gb.run_for(GameBoy::kTicksPerSecond / 100);
+    EXPECT_TRUE(gb.cpu().stopped());
+    EXPECT_EQ(gb.cpu().registers().pc, kEntry + 2);
+
+    gb.set_button(core::Joypad::Button::A, true);  // both groups are selected after boot
+    gb.step();
+    EXPECT_FALSE(gb.cpu().stopped());
+    EXPECT_EQ(gb.cpu().registers().pc, kEntry + 3);
+}
+
 TEST(GameBoy, BusIsReadableFromOutside) {
     GameBoy gb;
     ASSERT_EQ(gb.load_rom(ok_rom()), "");

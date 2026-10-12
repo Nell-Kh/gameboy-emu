@@ -21,6 +21,7 @@ add_executable(unit_tests
   unit/cpu_opcode_table_test.cpp
   unit/cpu_test.cpp
   unit/gameboy_test.cpp
+  unit/joypad_test.cpp
   unit/mbc1_test.cpp
   unit/oam_dma_test.cpp
   unit/ppu_render_test.cpp

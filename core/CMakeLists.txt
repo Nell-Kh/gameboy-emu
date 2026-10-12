@@ -6,6 +6,7 @@ add_library(core STATIC
   cartridge/no_mbc.cpp
   cpu.cpp
   gameboy.cpp
+  joypad.cpp
   oam_dma.cpp
   opcodes.gen.cpp
   ppu.cpp

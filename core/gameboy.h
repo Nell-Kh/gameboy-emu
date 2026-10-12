@@ -44,6 +44,9 @@ public:
     // Total clock ticks since power-on.
     [[nodiscard]] std::uint64_t cycles() const noexcept;
 
+    // Presses or releases a button. A frontend calls this as input arrives.
+    void set_button(Joypad::Button button, bool pressed) noexcept;
+
     // The screen: 160x144 shades, 0 (white) to 3 (black), row by row.
     [[nodiscard]] const Ppu::Frame& frame() const noexcept;
 

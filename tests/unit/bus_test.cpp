@@ -8,6 +8,7 @@
 
 #include "core/cartridge/cartridge.h"
 #include "core/interrupts.h"
+#include "core/joypad.h"
 #include "core/oam_dma.h"
 #include "core/ppu.h"
 #include "core/serial.h"
@@ -189,6 +190,24 @@ TEST(Bus, JoypadReadsNoButtonsPressedAndKeepsTheSelectBits) {
     EXPECT_EQ(bus.read8(0xFF00), 0xEF);
     bus.write8(0xFF00, 0x10);
     EXPECT_EQ(bus.read8(0xFF00), 0xDF);
+}
+
+TEST(Bus, AButtonPressShowsInFF00AndRequestsTheJoypadInterrupt) {
+    Bus bus;
+    bus.write8(Bus::kInterruptFlag, 0x00);
+    bus.write8(0xFF00, 0x10);  // select the buttons
+    bus.set_button(core::Joypad::Button::Start, true);
+    EXPECT_EQ(bus.read8(0xFF00), 0xD7);
+    EXPECT_TRUE(bus.interrupt_requested(Interrupt::Joypad));
+}
+
+TEST(Bus, SelectingAGroupWithAButtonHeldRequestsTheJoypadInterrupt) {
+    Bus bus;
+    bus.write8(0xFF00, 0x30);  // nothing selected
+    bus.set_button(core::Joypad::Button::Down, true);
+    bus.write8(Bus::kInterruptFlag, 0x00);
+    bus.write8(0xFF00, 0x20);  // select the d-pad
+    EXPECT_TRUE(bus.interrupt_requested(Interrupt::Joypad));
 }
 
 // Starts an OAM DMA from `page`00 and runs it until OAM is free again. The

@@ -78,6 +78,8 @@ public:
     // The picture: one shade (0-3) per pixel, row by row. Lines are written
     // as they are drawn, so mid-frame it holds parts of two frames.
     [[nodiscard]] const Frame& frame() const noexcept;
+    // How many times line 144 (VBlank) has started: one per finished picture.
+    [[nodiscard]] std::uint64_t frames_completed() const noexcept;
 
 private:
     static constexpr std::uint8_t kMaxObjectsPerLine = 10;
@@ -111,6 +113,7 @@ private:
 
     std::array<std::uint8_t, kVramSize> vram_{};
     Frame frame_{};
+    std::uint64_t frames_completed_ = 0;
     // Background/window colour index (before the palette) of each pixel of
     // the line being drawn; objects need it for their priority bit.
     std::array<std::uint8_t, kScreenWidth> bg_index_{};

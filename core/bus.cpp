@@ -283,6 +283,10 @@ const Ppu::Frame& Bus::frame() const noexcept {
     return ppu_.frame();
 }
 
+std::uint64_t Bus::frames_completed() const noexcept {
+    return ppu_.frames_completed();
+}
+
 const std::string& Bus::serial_output() const noexcept {
     return serial_.output();
 }

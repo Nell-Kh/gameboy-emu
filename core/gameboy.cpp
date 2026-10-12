@@ -34,6 +34,15 @@ std::uint64_t GameBoy::run_for(std::uint64_t t_cycles) {
     return bus_.cycles() - start;
 }
 
+std::uint64_t GameBoy::run_frame() {
+    const std::uint64_t start = bus_.cycles();
+    const std::uint64_t frame = bus_.frames_completed();
+    while (bus_.frames_completed() == frame && bus_.cycles() - start < kTicksPerFrame) {
+        cpu_.step();
+    }
+    return bus_.cycles() - start;
+}
+
 std::uint64_t GameBoy::cycles() const noexcept {
     return bus_.cycles();
 }

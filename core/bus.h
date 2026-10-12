@@ -73,6 +73,7 @@ public:
 
     // The PPU's picture.
     [[nodiscard]] const Ppu::Frame& frame() const noexcept;
+    [[nodiscard]] std::uint64_t frames_completed() const noexcept;
 
     // Every byte the program has sent over the serial port.
     [[nodiscard]] const std::string& serial_output() const noexcept;

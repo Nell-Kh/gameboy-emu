@@ -20,6 +20,7 @@ add_executable(unit_tests
   unit/cpu_load_test.cpp
   unit/cpu_opcode_table_test.cpp
   unit/cpu_test.cpp
+  unit/dpad_test.cpp
   unit/gameboy_test.cpp
   unit/joypad_test.cpp
   unit/mbc1_test.cpp
@@ -104,3 +105,18 @@ set_tests_properties(App.PrintsUsageWithoutArguments PROPERTIES
 )
 add_test(NAME App.RejectsUnknownOptions COMMAND gameboy-emu --no-such-option)
 set_tests_properties(App.RejectsUnknownOptions PROPERTIES WILL_FAIL TRUE)
+
+# Window mode is never opened in CI. These stop at the arguments or the ROM
+# file, before SDL starts.
+add_test(NAME App.WindowModeReportsAMissingRom COMMAND gameboy-emu no-such-rom.gb)
+set_tests_properties(App.WindowModeReportsAMissingRom PROPERTIES
+  PASS_REGULAR_EXPRESSION "cannot read no-such-rom.gb"
+)
+add_test(NAME App.TraceNeedsHeadless COMMAND gameboy-emu --trace no-such-rom.gb)
+set_tests_properties(App.TraceNeedsHeadless PROPERTIES
+  PASS_REGULAR_EXPRESSION "need --headless"
+)
+add_test(NAME App.RejectsAScaleOutOfRange COMMAND gameboy-emu --scale 0 no-such-rom.gb)
+set_tests_properties(App.RejectsAScaleOutOfRange PROPERTIES
+  PASS_REGULAR_EXPRESSION "--scale must be 1 to 16"
+)

@@ -94,9 +94,11 @@ std::uint8_t Ppu::write(std::uint16_t address, std::uint8_t value) noexcept {
             lcdc_ = value;
             if (was_enabled && !lcd_enabled()) {
                 // Off: back to the start of line 0. LYC = LY keeps its value.
+                // The screen goes blank until the LCD is switched on again.
                 line_ = 0;
                 dot_ = 0;
                 mode_ = Mode::HBlank;
+                frame_.fill(0);
                 return 0;
             }
             if (!was_enabled && lcd_enabled()) {
@@ -185,6 +187,7 @@ void Ppu::step_dot() noexcept {
 void Ppu::start_line() noexcept {
     if (line_ == kVisibleLines) {
         mode_ = Mode::VBlank;
+        ++frames_completed_;
         window_y_reached_ = false;
         window_line_ = 0;
         return;
@@ -454,6 +457,10 @@ bool Ppu::oam_accessible() const noexcept {
 
 std::uint32_t Ppu::drawing_dots() const noexcept {
     return drawing_dots_;
+}
+
+std::uint64_t Ppu::frames_completed() const noexcept {
+    return frames_completed_;
 }
 
 const Ppu::Frame& Ppu::frame() const noexcept {

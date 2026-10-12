@@ -200,6 +200,11 @@ that is a bug in this document.
   emulated. Addresses with no register read `0xFF`. The sound registers are plain memory whose
   unused and write-only bits read as 1. They start at 0, not at their post-boot values, and have
   no side effects: switching sound off in NR52 does not block or clear the other sound registers.
+- **LCD off:** the frame goes blank (shade 0) while the LCD is off. On hardware the screen is
+  then a little lighter than shade 0.
+- **Frontend:** the window runs one whole frame at a time and paces itself to 59.73 frames per
+  second (ADR-016). Input is read once per frame, so a key press reaches the game up to one frame
+  later than on hardware.
 - **Joypad:** a button press shows in `FF00` and requests the joypad interrupt the moment the
   frontend reports it. Not modelled: switch bounce, which on hardware can request the interrupt
   several times per press, and the few cycles a newly selected group takes to show. Opposite

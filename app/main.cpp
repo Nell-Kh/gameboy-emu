@@ -1,14 +1,15 @@
 // gameboy-emu: command-line frontend.
 //
-// Until the SDL window arrives in M3 the only mode is --headless: run a ROM
-// with no display and report what it printed over the serial port. That is
-// exactly what the CPU test ROMs need, locally and in CI.
+// Two modes. By default the ROM runs in an SDL window (sdl_frontend.cpp).
+// With --headless it runs with no display and reports what it printed over the
+// serial port, which is what the CPU test ROMs need, locally and in CI.
 
 #include <array>
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -20,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "app/sdl_frontend.h"
 #include "core/gameboy.h"
 
 namespace {
@@ -33,26 +35,39 @@ constexpr int kExitBadRom = 65;
 constexpr int kExitNoInput = 66;
 
 constexpr std::uint64_t kDefaultMaxSeconds = 60;
+constexpr int kDefaultScale = 4;
+constexpr std::uint64_t kMaxScale = 16;
 
 struct Options {
     std::string rom_path;
     std::uint64_t max_seconds = kDefaultMaxSeconds;
+    int scale = kDefaultScale;
     bool headless = false;
     bool trace = false;
+    bool headless_only_option = false;  // --max-seconds or --trace was given
+    bool scale_given = false;
 };
 
 void print_usage(std::ostream& out) {
     out << "gameboy-emu " << core::GameBoy::version() << "\n"
         << "\n"
-        << "Usage: gameboy-emu --headless ROM [--max-seconds N] [--trace]\n"
+        << "Usage: gameboy-emu ROM [--scale N]\n"
+        << "       gameboy-emu --headless ROM [--max-seconds N] [--trace]\n"
+        << "\n"
+        << "  ROM              play ROM in a window\n"
+        << "  --scale N        window size as a multiple of 160x144 (default " << kDefaultScale
+        << ")\n"
+        << "\n"
+        << "  Keys: arrows = d-pad, X = A, Z = B, Enter = Start, Backspace = Select,\n"
+        << "        Esc = quit\n"
         << "\n"
         << "  --headless       run ROM without a window and print its serial output\n"
         << "  --max-seconds N  give up after N emulated seconds (default " << kDefaultMaxSeconds
         << ")\n"
         << "  --trace          print the CPU state before every instruction\n"
         << "\n"
-        << "Exit status: 0 if the ROM printed \"Passed\", 1 if it printed \"Failed\",\n"
-        << "2 if it did neither before the time limit.\n";
+        << "Headless exit status: 0 if the ROM printed \"Passed\", 1 if it printed\n"
+        << "\"Failed\", 2 if it did neither before the time limit.\n";
 }
 
 std::optional<std::uint64_t> parse_number(std::string_view text) {
@@ -65,6 +80,39 @@ std::optional<std::uint64_t> parse_number(std::string_view text) {
     return value;
 }
 
+// Reads the number that follows the option at args[i] and moves i past it.
+std::optional<std::uint64_t> option_value(std::span<const std::string_view> args, std::size_t& i,
+                                          std::ostream& err) {
+    const std::string_view option = args[i];
+    if (i + 1 >= args.size()) {
+        err << "gameboy-emu: " << option << " needs a number\n";
+        return std::nullopt;
+    }
+    const auto value = parse_number(args[++i]);
+    if (!value) {
+        err << "gameboy-emu: not a number: " << args[i] << "\n";
+    }
+    return value;
+}
+
+// Checks the options that only make sense together. Returns false, with the
+// reason in `err`, if they do not.
+bool options_fit(const Options& options, std::ostream& err) {
+    if (!options.headless && options.headless_only_option) {
+        err << "gameboy-emu: --max-seconds and --trace need --headless\n";
+        return false;
+    }
+    if (options.headless && options.scale_given) {
+        err << "gameboy-emu: --scale has no effect with --headless\n";
+        return false;
+    }
+    if (options.rom_path.empty()) {
+        err << "gameboy-emu: no ROM given\n";
+        return false;
+    }
+    return true;
+}
+
 // Returns nothing if the arguments make no sense; the reason goes to `err`.
 std::optional<Options> parse_arguments(std::span<const std::string_view> args, std::ostream& err) {
     Options options;
@@ -74,17 +122,25 @@ std::optional<Options> parse_arguments(std::span<const std::string_view> args, s
             options.headless = true;
         } else if (arg == "--trace") {
             options.trace = true;
-        } else if (arg == "--max-seconds") {
-            if (i + 1 >= args.size()) {
-                err << "gameboy-emu: --max-seconds needs a number\n";
+            options.headless_only_option = true;
+        } else if (arg == "--scale") {
+            const auto scale = option_value(args, i, err);
+            if (!scale) {
                 return std::nullopt;
             }
-            const auto seconds = parse_number(args[++i]);
+            if (*scale < 1 || *scale > kMaxScale) {
+                err << "gameboy-emu: --scale must be 1 to " << kMaxScale << "\n";
+                return std::nullopt;
+            }
+            options.scale = static_cast<int>(*scale);
+            options.scale_given = true;
+        } else if (arg == "--max-seconds") {
+            const auto seconds = option_value(args, i, err);
             if (!seconds) {
-                err << "gameboy-emu: not a number: " << args[i] << "\n";
                 return std::nullopt;
             }
             options.max_seconds = *seconds;
+            options.headless_only_option = true;
         } else if (arg.starts_with("--")) {
             err << "gameboy-emu: unknown option " << arg << "\n";
             return std::nullopt;
@@ -95,12 +151,7 @@ std::optional<Options> parse_arguments(std::span<const std::string_view> args, s
             return std::nullopt;
         }
     }
-    if (!options.headless) {
-        err << "gameboy-emu: only --headless is available so far\n";
-        return std::nullopt;
-    }
-    if (options.rom_path.empty()) {
-        err << "gameboy-emu: no ROM given\n";
+    if (!options_fit(options, err)) {
         return std::nullopt;
     }
     return options;
@@ -156,19 +207,21 @@ std::string trace_line(const core::GameBoy& gb) {
     return line;
 }
 
-int run_headless(const Options& options) {
-    const auto rom = read_file(options.rom_path);
+// Reads the ROM and inserts it. Returns an exit status if that failed.
+std::optional<int> load(core::GameBoy& gb, const std::string& path) {
+    const auto rom = read_file(path);
     if (!rom) {
-        std::cerr << "gameboy-emu: cannot read " << options.rom_path << "\n";
+        std::cerr << "gameboy-emu: cannot read " << path << "\n";
         return kExitNoInput;
     }
-
-    core::GameBoy gb;
     if (const std::string error = gb.load_rom(*rom); !error.empty()) {
-        std::cerr << "gameboy-emu: cannot run " << options.rom_path << ": " << error << "\n";
+        std::cerr << "gameboy-emu: cannot run " << path << ": " << error << "\n";
         return kExitBadRom;
     }
+    return std::nullopt;
+}
 
+int run_headless(core::GameBoy& gb, const Options& options) {
     const std::uint64_t limit = options.max_seconds * core::GameBoy::kTicksPerSecond;
     const std::string& serial = gb.serial_output();
     std::size_t printed = 0;
@@ -228,5 +281,13 @@ int main(int argc, char** argv) {
         std::cerr << "Try gameboy-emu --help\n";
         return kExitUsage;
     }
-    return run_headless(*options);
+    core::GameBoy gb;
+    if (const auto failed = load(gb, options->rom_path)) {
+        return *failed;
+    }
+    if (options->headless) {
+        return run_headless(gb, *options);
+    }
+    const std::string name = std::filesystem::path(options->rom_path).filename().string();
+    return frontend::run_window(gb, {.title = name + " - gameboy-emu", .scale = options->scale});
 }

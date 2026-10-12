@@ -172,6 +172,15 @@ TEST_F(PpuRender, BackgroundOffDrawsBgpColour0) {
     EXPECT_EQ(pixel(159, 0), 2);
 }
 
+TEST_F(PpuRender, SwitchingTheLcdOffBlanksTheScreen) {
+    fill_tile(0x8000, 0xFF, 0xFF);
+    draw_until_line(kLcdBg8000, 0);
+    ASSERT_EQ(pixel(0, 0), 3);
+    set(Ppu::kLcdc, kLcdOff);
+    EXPECT_EQ(pixel(0, 0), 0);
+    EXPECT_EQ(pixel(159, 0), 0);
+}
+
 TEST_F(PpuRender, LinesAreDrawnWhenMode3Starts) {
     fill_tile(0x8000, 0xFF, 0xFF);
     set(Ppu::kLcdc, kLcdBg8000);

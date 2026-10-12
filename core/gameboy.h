@@ -18,6 +18,9 @@ public:
     static constexpr int kScreenHeight = 144;
     // The master clock: 4.194304 MHz, i.e. this many ticks per second.
     static constexpr std::uint64_t kTicksPerSecond = 4'194'304;
+    // One picture: 154 lines of 456 ticks, about 59.73 frames per second.
+    static constexpr std::uint64_t kTicksPerFrame =
+        std::uint64_t{Ppu::kLinesPerFrame} * Ppu::kTicksPerLine;
 
     [[nodiscard]] static std::string_view version() noexcept;
 
@@ -40,6 +43,12 @@ public:
     // Runs whole instructions until at least `t_cycles` ticks have passed.
     // Returns the ticks actually run, which can overshoot by one instruction.
     std::uint64_t run_for(std::uint64_t t_cycles);
+
+    // Runs whole instructions until the PPU finishes a picture (line 144
+    // starts), so frame() then holds one complete frame. With the LCD off no
+    // picture is finished; it stops after kTicksPerFrame ticks instead.
+    // Returns the ticks run.
+    std::uint64_t run_frame();
 
     // Total clock ticks since power-on.
     [[nodiscard]] std::uint64_t cycles() const noexcept;

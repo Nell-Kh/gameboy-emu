@@ -105,6 +105,39 @@ TEST(GameBoy, AButtonPressEndsStop) {
     EXPECT_EQ(gb.cpu().registers().pc, kEntry + 3);
 }
 
+TEST(GameBoy, RunFrameStopsWhenLine144Starts) {
+    GameBoy gb;
+    ASSERT_EQ(gb.load_rom(test::make_rom({0x18, 0xFE})), "");  // JR -2: loop
+    constexpr std::uint64_t kLongestInstruction = 24;
+
+    // After boot the PPU is at the start of line 0, 144 lines before VBlank.
+    constexpr std::uint64_t kTicksToVBlank = std::uint64_t{144} * 456;
+    const std::uint64_t first = gb.run_frame();
+    EXPECT_GE(first, kTicksToVBlank);
+    EXPECT_LT(first, kTicksToVBlank + kLongestInstruction);
+    EXPECT_EQ(gb.bus().read8(0xFF44), 144);
+
+    const std::uint64_t second = gb.run_frame();
+    EXPECT_GT(second, GameBoy::kTicksPerFrame - kLongestInstruction);
+    EXPECT_LT(second, GameBoy::kTicksPerFrame + kLongestInstruction);
+    EXPECT_EQ(gb.bus().read8(0xFF44), 144);
+}
+
+TEST(GameBoy, RunFrameWithTheLcdOffRunsOneFrameOfTicks) {
+    GameBoy gb;
+    ASSERT_EQ(gb.load_rom(test::make_rom({
+                  0xAF,        // XOR A
+                  0xE0, 0x40,  // LDH [0xFF40], A   ; LCD off
+                  0x18, 0xFE,  // JR -2
+              })),
+              "");
+    gb.step();
+    gb.step();
+    const std::uint64_t ran = gb.run_frame();
+    EXPECT_GE(ran, GameBoy::kTicksPerFrame);
+    EXPECT_LT(ran, GameBoy::kTicksPerFrame + 24);
+}
+
 TEST(GameBoy, BusIsReadableFromOutside) {
     GameBoy gb;
     ASSERT_EQ(gb.load_rom(ok_rom()), "");

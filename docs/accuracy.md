@@ -81,11 +81,23 @@ Blargg's timing ROMs, from the same repository:
 | `bits/mem_oam` | the sprite table (OAM) is readable and writable | Passed |
 | `bits/reg_f` | the low four bits of F are always 0 | Passed |
 
+[dmg-acid2](https://github.com/mattcurrie/dmg-acid2) by Matt Currie, from the same c-sp
+collection. When the ROM reaches `LD B, B`, the frame is compared with `dmg-acid2-dmg.png` in
+shades 0-3:
+
+| ROM | What it covers | Result |
+|---|---|---|
+| `dmg-acid2` | background, window and its line counter, objects, flips, 8x16 objects, object priority, the 10-objects-per-line limit, tile addressing modes | Pixel-identical |
+
 To reproduce one by hand:
 
 ```
 ./build/release/app/gameboy-emu --headless path/to/01-special.gb
 ```
+
+dmg-acid2 has no pass or fail verdict of its own; it is checked by the
+`DmgAcid2.FrameMatchesTheReference` test in `rom_tests`, which on a mismatch saves the frame as
+`dmg-acid2-dmg-actual.png` next to the reference and prints the first differing pixel.
 
 ## Not yet tested in CI
 
@@ -105,7 +117,7 @@ To reproduce one by hand:
     implemented from the Pan Docs but does not match this test in every layout yet.
   - `ppu/lcdon_timing-GS`, `ppu/lcdon_write_timing-GS`: the first line after the LCD is switched on
     starts in mode 0 as on hardware, but its 2-dot lateness is not modelled.
-- The picture itself: dmg-acid2 (next M3 step). Sound (M5).
+- Sound (M5).
 
 ## Known simplifications
 
@@ -159,7 +171,7 @@ that is a bug in this document.
   for one cycle) is not modelled.
 - The background, window and objects are drawn by a scanline renderer (ADR-014): each line is
   drawn in one go when its mode 3 starts, so register writes during mode 3 take effect from the
-  next line. dmg-acid2 matches its reference in a hand run; it is not in CI yet.
+  next line.
 - **Window quirks:** on hardware WX = 0 shifts the window left by `SCX % 8`, and WX = 166 shows
   a column at the right edge shifted down a line. Neither is modelled: WX = 0 here just hides the
   window's first 7 columns, and WX = 166 shows window column 0 at screen x 159.

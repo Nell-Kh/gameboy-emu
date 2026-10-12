@@ -197,3 +197,9 @@ record that supersedes the old one, not by editing history.
 - **Consequences:** Much simpler than a FIFO and fast. Register writes during mode 3 (mid-line
   scroll, palette or window changes) only take effect from the next line, which a few games and
   the Mealybug tests rely on; `docs/accuracy.md` lists this.
+
+## ADR-015: stb_image reads the reference screenshots, in test code only
+
+- **Decision:** `stb_image.h` v2.30 and `stb_image_write.h` v1.16 from
+  [nothings/stb](https://github.com/nothings/stb) at commit `2c980bb` (public domain or MIT),
+  vendored unchanged in `tests/third_party/stb/` with the licence and linked only into `rom_tests`.

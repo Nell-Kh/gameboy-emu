@@ -211,7 +211,7 @@ with the reference images use `FF`, `AA`, `55`, `00` for shades 0-3 (dmg-acid2 R
 `LD B, B`; the frame on screen at that point is compared. The ROM and reference image come from
 the c-sp collection already downloaded (ADR-011).
 
-**Mooneye `acceptance/ppu/`**, all twelve fail today:
+**Mooneye `acceptance/ppu/`** (when this plan was written, all twelve failed):
 
 | Test | Needs | M3 target |
 |---|---|---|

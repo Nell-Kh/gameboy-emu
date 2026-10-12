@@ -69,14 +69,25 @@ if(GB_FETCH_TEST_ROMS)
   )
   FetchContent_MakeAvailable(csp_test_roms)
 
+  # stb_image and stb_image_write, vendored at a pinned commit (ADR-015), read
+  # and write PNG screenshots. Test code only: never linked into core or app.
+  # The .c file is built by the C++ compiler, so every object in a test binary
+  # comes from the same compiler and sanitizer runtime. SYSTEM keeps stb's
+  # warnings and clang-tidy findings out of our builds.
+  add_library(stb STATIC third_party/stb/stb_impl.c)
+  set_source_files_properties(third_party/stb/stb_impl.c PROPERTIES LANGUAGE CXX)
+  target_include_directories(stb SYSTEM INTERFACE third_party/stb)
+
   add_executable(rom_tests
+    acid2_test.cpp
     test_roms.cpp
   )
   target_compile_definitions(rom_tests PRIVATE
     GB_TEST_ROM_DIR="${gb_test_roms_SOURCE_DIR}"
     GB_MOONEYE_DIR="${csp_test_roms_SOURCE_DIR}/mooneye-test-suite"
+    GB_ACID2_DIR="${csp_test_roms_SOURCE_DIR}/dmg-acid2"
   )
-  target_link_libraries(rom_tests PRIVATE gb::core GTest::gtest_main gb_warnings)
+  target_link_libraries(rom_tests PRIVATE gb::core stb GTest::gtest_main gb_warnings)
   gtest_discover_tests(rom_tests)
 
   # The command-line frontend, end to end: exit status 0 means the ROM passed.

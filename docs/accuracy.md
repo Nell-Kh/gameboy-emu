@@ -77,6 +77,7 @@ Blargg's timing ROMs, from the same repository:
 | `ppu/stat_irq_blocking` | STAT interrupts only on a rising edge of the shared line | Passed |
 | `ppu/stat_lyc_onoff` | the LYC = LY bit while the LCD is switched off and on | Passed |
 | `ppu/hblank_ly_scx_timing-GS` | the `SCX % 8` delay in mode 3, against the LY change | Passed |
+| `ppu/intr_2_mode0_timing_sprites` | how much objects lengthen mode 3, in 105 object layouts | Passed |
 | `bits/unused_hwio-GS` | unused and write-only I/O bits read as 1; unmapped I/O reads `0xFF` | Passed |
 | `bits/mem_oam` | the sprite table (OAM) is readable and writable | Passed |
 | `bits/reg_f` | the low four bits of F are always 0 | Passed |
@@ -124,18 +125,6 @@ provide.
     DMG.
   - `serial/boot_sclk_align-dmgABCmgb`: the phase of the serial clock the boot ROM leaves behind is
     not modelled.
-  - `ppu/intr_2_mode0_timing_sprites`: the object part of the mode 3 length. The test pins the
-    end of mode 3 to one machine cycle for 105 object layouts; patching each case's expected value
-    in turn shows 44 match and 61 do not, always by 1 machine cycle except where two or more
-    objects sit at X = 0. Two causes:
-    - Objects at OAM X = 0 are charged a flat 11 dots each, following the Pan Docs. With N of them
-      the test expects about 6 dots each after the first (N = 10: 16 machine cycles, ours 28), so
-      X = 0 should follow the same rule as any other X: 6 dots, plus the alignment cost only for the
-      first object on a background tile.
-    - Every other mismatch is 1 machine cycle too long. Hypothesis, checked offline against all 105
-      cases but not yet in the code: drop the X = 0 rule and charge 3 dots less per line that has
-      objects; that model matches all 105. Whether the 3 dots belong to the object fetch or to
-      where mode 3 ends within its machine cycle is not settled.
   - `ppu/lcdon_timing-GS`: LY matches throughout. The first mismatch is the LYC = LY bit in STAT at
     machine cycle `$6F` after the LCD is switched on: expected clear (`$80`), ours set (`$84`).
   - `ppu/lcdon_write_timing-GS`: at machine cycle `$83` after the LCD is switched on an OAM write
@@ -182,9 +171,12 @@ that is a bug in this document.
 **PPU**
 
 - Modes, LY, LYC and the STAT interrupt line advance per dot (`docs/ppu-notes.md`). Mode 3 lasts
-  172 dots plus `SCX % 8`, 6 if the window starts on the line, and the Pan Docs object penalty.
-  The object penalty is not exact in every layout (`intr_2_mode0_timing_sprites` fails; see "Not
-  yet tested in CI" for which layouts and why).
+  172 dots plus `SCX % 8`, 6 if the window starts on the line, and the object penalty: the Pan
+  Docs formula with two changes taken from `intr_2_mode0_timing_sprites`, which it matches in all
+  105 layouts (`docs/ppu-notes.md`, section 2). The test sees mode 3's end only to the machine
+  cycle, so the penalty is confirmed to that precision, not to the dot. Whether the 3-dot credit
+  per line belongs to the object fetch or to where mode 3 ends within its machine cycle is not
+  settled.
 - LY shows the next line's number during the last 4 dots of each line; this is what
   `hblank_ly_scx_timing-GS` needs. LYC is compared with the line itself, not with that early value.
 - **Line 153:** other emulators report that LY reads 0 from dot 4 of line 153 and that LYC is

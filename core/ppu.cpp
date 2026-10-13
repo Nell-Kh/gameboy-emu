@@ -364,11 +364,19 @@ void Ppu::draw_object(std::uint8_t object, ObjectColumns& taken) noexcept {
     }
 }
 
-// Pan Docs, Rendering, "Mode 3 length". Objects are only fetched while
-// objects are enabled.
+// How much longer mode 3 gets for the objects on this line. Objects are only
+// fetched while objects are enabled. Each one costs 6 dots, and the first one on
+// each background tile waits for that tile's fetch: 5 dots less one per pixel it
+// sits to the right of the tile's start (Pan Docs, Rendering, "Mode 3 length").
+// Two changes from the Pan Docs, both from Mooneye's intr_2_mode0_timing_sprites,
+// whose 105 object layouts this matches: an object at X = 0 follows the same rule
+// as any other (the Pan Docs give it a flat 11 dots), and a line with objects
+// costs 3 dots less in total.
 std::uint32_t Ppu::object_penalty() const noexcept {
-    constexpr std::uint32_t kFlat = 6;
-    constexpr std::uint32_t kAtXZero = 11;
+    constexpr std::uint32_t kPerObject = 6;
+    constexpr std::uint32_t kMaxTileWait = 5;
+    constexpr std::uint32_t kLineCredit = 3;
+    constexpr std::uint32_t kHiddenX = 168;  // at or beyond the right edge
     if ((lcdc_ & kObjectEnable) == 0) {
         return 0;
     }
@@ -376,23 +384,19 @@ std::uint32_t Ppu::object_penalty() const noexcept {
     std::array<bool, 32> tile_seen{};
     for (std::uint8_t i = 0; i < line_object_count_; ++i) {
         const std::uint32_t x = oam_.at(std::size_t{line_objects_.at(i)} * kObjectBytes + 1);
-        if (x == 0) {
-            penalty += kAtXZero;
-            continue;
-        }
-        if (x >= 168) {
+        if (x >= kHiddenX) {
             continue;
         }
         const std::uint32_t bg_x = x + scx_;
         const std::uint32_t tile = (bg_x / 8) % 32;
         if (!tile_seen.at(tile)) {
             tile_seen.at(tile) = true;
-            const std::uint32_t right_pixels = 7 - (bg_x % 8);
-            penalty += right_pixels > 2 ? right_pixels - 2 : 0;
+            const std::uint32_t offset = bg_x % 8;
+            penalty += offset < kMaxTileWait ? kMaxTileWait - offset : 0;
         }
-        penalty += kFlat;
+        penalty += kPerObject;
     }
-    return penalty;
+    return penalty > kLineCredit ? penalty - kLineCredit : 0;
 }
 
 bool Ppu::stat_line() const noexcept {

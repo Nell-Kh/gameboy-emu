@@ -93,6 +93,10 @@ fetches), plus:
   number of pixels of the background tile under the object that lie strictly to the right of the
   object's leftmost pixel. Only the first object on a given background tile pays the second part.
   An object at OAM X = 0 always costs 11.
+- **Changed after M3 (test).** `intr_2_mode0_timing_sprites` does not match the two rules above in
+  61 of its 105 layouts. What matches all 105: an object at X = 0 follows the same rule as any
+  other X (no flat 11), and a line with objects costs 3 dots less in total. This is what the code
+  does; `tests/unit/ppu_test.cpp` checks all 105 layouts.
 
 Whatever mode 3 gains, mode 0 loses: the line stays 456 dots.
 
@@ -224,7 +228,7 @@ the c-sp collection already downloaded (ADR-011).
 | `stat_irq_blocking` | Rising-edge STAT line | yes |
 | `stat_lyc_onoff` | LYC bit kept while the LCD is off | yes |
 | `hblank_ly_scx_timing-GS` | `SCX % 8` penalty in mode 3 | yes |
-| `intr_2_mode0_timing_sprites` | Object penalties in mode 3, all cases | stretch: the formula is in section 2, but the test covers many object layouts |
+| `intr_2_mode0_timing_sprites` | Object penalties in mode 3, all cases | stretch; passes since the change noted in section 2 |
 | `lcdon_timing-GS` | The odd first line after LCD on, to the dot | stretch |
 | `lcdon_write_timing-GS` | Same, for writes | stretch |
 

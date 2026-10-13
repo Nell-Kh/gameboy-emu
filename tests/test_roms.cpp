@@ -233,6 +233,8 @@ INSTANTIATE_TEST_SUITE_P(
     Ppu, MooneyeRom,
     testing::Values(Rom{"intr_2_0_timing", "acceptance/ppu/intr_2_0_timing.gb"},
                     Rom{"intr_2_mode0_timing", "acceptance/ppu/intr_2_mode0_timing.gb"},
+                    Rom{"intr_2_mode0_timing_sprites",
+                        "acceptance/ppu/intr_2_mode0_timing_sprites.gb"},
                     Rom{"intr_2_mode3_timing", "acceptance/ppu/intr_2_mode3_timing.gb"},
                     Rom{"intr_2_oam_ok_timing", "acceptance/ppu/intr_2_oam_ok_timing.gb"},
                     Rom{"intr_1_2_timing", "acceptance/ppu/intr_1_2_timing-GS.gb"},

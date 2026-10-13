@@ -197,10 +197,19 @@ ADR-019.**
   installs those signal handlers while its events subsystem is running (the video subsystem
   starts it) and the hint `SDL_HINT_NO_SIGNAL_HANDLERS` is not set. The frontend checks at start-up
   that the hint is unset and refuses to start otherwise, so a later change cannot silently remove
-  the behaviour. A test sends SIGTERM to a running window and checks that the save was written.
-  To run in CI, that test uses SDL's `dummy` video driver, which creates no real window. CI has so
-  far never started the window at all; if that rule should stand even with the dummy driver, the
-  test stays a by-hand check instead. To confirm in review.
+  the behaviour.
+
+**The signal test (agreed in review).** It runs in one new CI job only, "app smoke": Linux, with
+`SDL_VIDEODRIVER=dummy` and `SDL_AUDIODRIVER=dummy`, so no real window or audio device is opened.
+The three existing jobs stay as they are, and headless stays the core's CI path.
+
+- The test copies a free test ROM that writes known bytes to battery RAM into a temporary
+  directory, so the save lands there, and starts the app on it in window mode.
+- It sends SIGTERM, waits for the app to exit (time limit 10 s), and checks: exit code 0,
+  `game.sav` exists, it is exactly the RAM size, and its bytes are the ones the ROM wrote.
+- The same test again with SIGINT.
+- When the job lands, a new ADR amending ADR-004 records that CI exercises the window only through
+  the dummy drivers; real-window behaviour (vsync, scaling, audio) stays a by-hand check.
 
 **Headless mode never reads or writes save files**, so CI runs stay clean and repeatable.
 

@@ -10,8 +10,10 @@ A Game Boy (DMG) emulator in C++20. Work in progress.
 licence), playing its built-in demo in this emulator's SDL window. Recorded from the window with
 ffmpeg.*
 
-**Status:** CPU, timing, memory and MBC1 complete (`v0.2.0`). M3, the PPU, is in progress: it draws
-the background, window and objects, and runs ROMs in an SDL window with keyboard input. Blargg's
+Libbet and the Magic Floor runs; see [docs/accuracy.md](docs/accuracy.md) for what is verified.
+
+**Status:** CPU, timing, memory and MBC1 complete (`v0.2.0`). M3 complete (`v0.3.0`): the PPU draws
+the background, window and objects, and ROMs run in an SDL window with keyboard input. Blargg's
 `cpu_instrs`, `instr_timing` and `mem_timing`, 71 Mooneye tests and dmg-acid2 (pixel-identical) pass
 in CI. There is no sound yet, and only cartridges with no mapper or MBC1 load; see
 [docs/accuracy.md](docs/accuracy.md) for exactly what is and is not covered.

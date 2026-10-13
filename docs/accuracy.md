@@ -105,7 +105,10 @@ Not run in CI: these were run by hand and the screen was checked by eye.
 
 | Game | What was checked | Result |
 |---|---|---|
-| [Libbet and the Magic Floor](https://github.com/pinobatch/libbet) v0.08 (zlib licence), built from source at commit `1232e71` with RGBDS 1.0.4 | title and story screens; the built-in demo; playing the first floor (rolling with the d-pad, the progress counter) | Plays correctly, without sound |
+| [Libbet and the Magic Floor](https://github.com/pinobatch/libbet) v0.08 (zlib licence), built from source at commit `1232e71` with RGBDS 1.0.4 | title and story screens; the built-in demo; on macOS with the keyboard: rolling, jumping (A + d-pad), finishing floors and moving on to the next, the progress counter. Start does nothing during a floor, as in the game's source (it has no pause). | Plays correctly, without sound |
+
+Tetris was not checked: it needs a ROM of the commercial game, which this project does not
+provide.
 
 ## Not yet tested in CI
 
@@ -121,10 +124,25 @@ Not run in CI: these were run by hand and the screen was checked by eye.
     DMG.
   - `serial/boot_sclk_align-dmgABCmgb`: the phase of the serial clock the boot ROM leaves behind is
     not modelled.
-  - `ppu/intr_2_mode0_timing_sprites`: the object part of the mode 3 length formula is
-    implemented from the Pan Docs but does not match this test in every layout yet.
-  - `ppu/lcdon_timing-GS`, `ppu/lcdon_write_timing-GS`: the first line after the LCD is switched on
-    starts in mode 0 as on hardware, but its 2-dot lateness is not modelled.
+  - `ppu/intr_2_mode0_timing_sprites`: the object part of the mode 3 length. The test pins the
+    end of mode 3 to one machine cycle for 105 object layouts; patching each case's expected value
+    in turn shows 44 match and 61 do not, always by 1 machine cycle except where two or more
+    objects sit at X = 0. Two causes:
+    - Objects at OAM X = 0 are charged a flat 11 dots each, following the Pan Docs. With N of them
+      the test expects about 6 dots each after the first (N = 10: 16 machine cycles, ours 28), so
+      X = 0 should follow the same rule as any other X: 6 dots, plus the alignment cost only for the
+      first object on a background tile.
+    - Every other mismatch is 1 machine cycle too long. Hypothesis, checked offline against all 105
+      cases but not yet in the code: drop the X = 0 rule and charge 3 dots less per line that has
+      objects; that model matches all 105. Whether the 3 dots belong to the object fetch or to
+      where mode 3 ends within its machine cycle is not settled.
+  - `ppu/lcdon_timing-GS`: LY matches throughout. The first mismatch is the LYC = LY bit in STAT at
+    machine cycle `$6F` after the LCD is switched on: expected clear (`$80`), ours set (`$84`).
+  - `ppu/lcdon_write_timing-GS`: at machine cycle `$83` after the LCD is switched on an OAM write
+    should go through (`$81`); ours is blocked (`$00`).
+  - Both `lcdon` tests state their own cause: on the first line after the LCD is switched on the
+    PPU runs 2 dots late. That line starts in mode 0 here as on hardware, but the 2-dot lateness is
+    not modelled; that is the likely cause of both mismatches, not yet confirmed.
 - Sound (M5).
 
 ## Known simplifications
@@ -165,7 +183,8 @@ that is a bug in this document.
 
 - Modes, LY, LYC and the STAT interrupt line advance per dot (`docs/ppu-notes.md`). Mode 3 lasts
   172 dots plus `SCX % 8`, 6 if the window starts on the line, and the Pan Docs object penalty.
-  The object penalty is not exact in every layout (`intr_2_mode0_timing_sprites` fails).
+  The object penalty is not exact in every layout (`intr_2_mode0_timing_sprites` fails; see "Not
+  yet tested in CI" for which layouts and why).
 - LY shows the next line's number during the last 4 dots of each line; this is what
   `hblank_ly_scx_timing-GS` needs. LYC is compared with the line itself, not with that early value.
 - **Line 153:** other emulators report that LY reads 0 from dot 4 of line 153 and that LYC is
@@ -178,8 +197,8 @@ that is a bug in this document.
 - The STAT write quirk of the DMG (a write can raise a STAT interrupt as if `FF` had been written
   for one cycle) is not modelled.
 - The background, window and objects are drawn by a scanline renderer (ADR-014): each line is
-  drawn in one go when its mode 3 starts, so register writes during mode 3 take effect from the
-  next line.
+  drawn in one go when its mode 3 starts, so register writes during mode 3 (mid-line scroll,
+  palette or window changes) take effect from the next line.
 - **Window quirks:** on hardware WX = 0 shifts the window left by `SCX % 8`, and WX = 166 shows
   a column at the right edge shifted down a line. Neither is modelled: WX = 0 here just hides the
   window's first 7 columns, and WX = 166 shows window column 0 at screen x 159.

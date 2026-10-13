@@ -74,7 +74,8 @@ Pan Docs, MBC3.
   codes. **(test)** `mbc3-tester` is type `11` with a 4 MiB ROM, and its DMG reference
   screenshot ticks all 256 banks. So: the ROM bank register is 8 bits wide and masked to the
   ROM's bank count, and the RAM bank register selects up to 8 banks masked to the RAM size. For
-  ROMs of 2 MiB or less this is the same as plain MBC3.
+  ROMs of 2 MiB or less this is the same as plain MBC3. **Agreed in review.** It goes into the
+  MBC3 ADR's consequences and into accuracy.md, so nobody reads the 8-bit bank register as a bug.
 - A RAM bank / register value outside `00`-`07` and `08`-`0C` maps nothing: reads `FF`, writes
   are ignored **(choice)**.
 
@@ -124,13 +125,26 @@ emulated time, that is about 4,200 clock ticks out of 4,194,304 per second.
 
 ## 5. Where the clock's time comes from
 
-A decision for review (ADR-018 once agreed).
+**Agreed in review; becomes ADR-018.** It replaces the earlier idea of injecting a wall-clock
+time source into the cartridge.
 
-**Proposal: the clock advances with emulated time; the wall clock is only read by the frontend,
-at load.** The cartridge gets `tick(t_cycles)` from the bus, like the timer, and the clock counts
+**The clock advances with emulated time; the wall clock is only read by the frontend, at
+load.** The cartridge gets `tick(t_cycles)` from the bus, like the timer, and the clock counts
 4,194,304 ticks per second while not halted. The wall clock enters only when a battery file is
 loaded: the frontend compares the timestamp saved in the file (section 6) with the current time
 and tells the cartridge to advance by the seconds that passed while the emulator was closed.
+
+**The catch-up at load:**
+
+- If the saved clock was halted (DH bit 6 set), it does not advance: a stopped clock stays stopped
+  while the emulator is closed.
+- Otherwise the seconds since the save are added as if the clock had ticked that many times. If
+  the day counter passes 511 on the way, the carry bit (DH bit 7) is set and the counter keeps
+  only its low 9 bits, exactly as ticking would do; it never wraps silently. Adding in one step
+  must give the same registers as ticking second by second, and a unit test checks that against
+  a tick-by-tick reference, including across a day overflow.
+- The seconds counter's invalid values (60-63) and the hours' (24-31) follow the same rules as in
+  section 4 during the catch-up.
 
 Why this rather than giving the cartridge a wall-clock time source with a fake for tests:
 
@@ -151,7 +165,8 @@ the two stay together. Listed in accuracy.md as a simplification.
 
 **Who does what.** The core never touches files. It exposes, for a cartridge with a battery:
 the RAM bytes, a way to load them, a "changed since last save" flag, and for MBC3 + timer the
-clock state to write and read back. The frontend owns the file (ADR-019 once agreed).
+clock state to write and read back. The frontend owns the file. **Agreed in review; becomes
+ADR-019.**
 
 **The file.** Next to the ROM, with the extension replaced: `game.gb` → `game.sav`. Contents:
 
@@ -177,6 +192,15 @@ clock state to write and read back. The frontend owns the file (ADR-019 once agr
   often write a save in several steps, so writing on every change would be slow and pointless.
 - Always to `game.sav.tmp` first, then renamed over `game.sav`, so a crash mid-write leaves the
   old save intact.
+- On **SIGINT and SIGTERM** (Ctrl+C, closing the terminal window). SDL turns both into its normal
+  quit event, so they take the same path as closing the window, which writes the save. SDL only
+  installs those signal handlers while its events subsystem is running (the video subsystem
+  starts it) and the hint `SDL_HINT_NO_SIGNAL_HANDLERS` is not set. The frontend checks at start-up
+  that the hint is unset and refuses to start otherwise, so a later change cannot silently remove
+  the behaviour. A test sends SIGTERM to a running window and checks that the save was written.
+  To run in CI, that test uses SDL's `dummy` video driver, which creates no real window. CI has so
+  far never started the window at all; if that rule should stand even with the dummy driver, the
+  test stays a by-hand check instead. To confirm in review.
 
 **Headless mode never reads or writes save files**, so CI runs stay clean and repeatable.
 
@@ -194,25 +218,35 @@ A snapshot of the whole machine, saved and loaded from the window: **F5** saves,
 one file per ROM, `game.state` **(choice)**. Headless mode does not use them; tests call the core
 directly.
 
-**Format** (ADR-020 once agreed). Everything little-endian, written field by field. Never a
-`memcpy` of a struct, so padding and compiler layout can never leak into the file.
+**Format.** **Agreed in review; becomes ADR-020.** Everything little-endian, written field by
+field. Never a `memcpy` of a struct, so padding and compiler layout can never leak into the file.
 
-Header, 32 bytes:
+Header, 48 bytes:
 
 | Offset | Size | Field |
 |---|---|---|
-| 0 | 8 | magic: the ASCII bytes `GBEMUSTA` |
+| 0 | 8 | magic, 8 ASCII bytes. `GBEMUSTA` for now; the final name is chosen with the product name, still 8 bytes |
 | 8 | 4 | format version, starting at 1 |
 | 12 | 1 | the ROM's header checksum (byte `0x014D`) |
 | 13 | 1 | zero |
 | 14 | 2 | the ROM's global checksum, as stored at `0x014E`-`0x014F` |
 | 16 | 16 | the ROM title from the header, padded with zeros |
+| 32 | 4 | CRC-32 of the payload: every byte after the header (the standard CRC-32 of zlib and PNG, polynomial `0xEDB88320`) |
+| 36 | 12 | reserved, all zero |
 
 The checksums and title identify the game, so a state is never loaded into a different ROM.
 
-Then sections, each a 4-byte ASCII tag, a 32-bit length and the payload, in this order. A loader
-that finds a missing section, a wrong length or a different version refuses the file with a
-message and leaves the running machine untouched.
+Then sections, each a 4-byte ASCII tag, a 32-bit length and the payload, in this order.
+
+**Loading refuses the file, with the reason, and leaves the running machine untouched** if:
+
+- the magic is wrong or the format version is not this build's;
+- the ROM identity does not match the loaded ROM;
+- any reserved header byte is not zero (so those bytes can be given a meaning later without
+  guessing what an old file put there);
+- the file is shorter than its header says, or the CRC-32 does not match (truncated or
+  corrupted);
+- a section is missing, out of order or has the wrong length.
 
 | Tag | Contents, in order | Bytes |
 |---|---|---|
@@ -282,14 +316,19 @@ and the three `rtc3test` subtests matching their screenshots in CI, and a save t
 and relaunch (section 6).
 
 **Also when convenient** (from the M3 review): the object-penalty model that matches all 105
-layouts of `intr_2_mode0_timing_sprites`, behind a unit test with the 105 cases.
+layouts of `intr_2_mode0_timing_sprites`, behind a unit test with the 105 cases. Done before M4
+started (ADR-017).
 
-## 10. Open questions for review
+## 10. Decisions from review
 
-1. Section 5: emulated-time clock with a wall-clock catch-up at load, instead of a wall-clock
-   time source injected into the cartridge.
-2. Section 6: when battery RAM is written (on close, and at most once a second while changed).
-3. Section 7: the save-state header, the section list, and refusing other versions instead of
-   converting them.
-4. Section 3: treating type `11`-`13` with a ROM over 2 MiB as MBC30 (8-bit bank register), which
-   is what `mbc3-tester`'s reference requires.
+All four questions are settled:
+
+1. **The clock's time:** emulated time while running, wall-clock catch-up at load, respecting the
+   halt bit and setting the day carry on overflow (section 5, ADR-018).
+2. **Battery writes:** on close, at most once a second while changed, temp file then rename,
+   never over a file of the wrong size, and on SIGINT / SIGTERM through SDL's quit event, with
+   the signal-handler hint checked at start-up (section 6, ADR-019).
+3. **Save states:** the 48-byte header with a CRC-32 and zero reserved bytes, field-by-field
+   sections, other versions refused; both determinism tests kept (section 7, ADR-020).
+4. **MBC30:** an 8-bit ROM bank register for type `11`-`13` ROMs over 2 MiB, recorded in the MBC3
+   ADR and in accuracy.md (section 3).

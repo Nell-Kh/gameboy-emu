@@ -124,7 +124,7 @@ emulated time, that is about 4,200 clock ticks out of 4,194,304 per second.
 
 ## 5. Where the clock's time comes from
 
-A decision for review (ADR-017 once agreed).
+A decision for review (ADR-018 once agreed).
 
 **Proposal: the clock advances with emulated time; the wall clock is only read by the frontend,
 at load.** The cartridge gets `tick(t_cycles)` from the bus, like the timer, and the clock counts
@@ -151,7 +151,7 @@ the two stay together. Listed in accuracy.md as a simplification.
 
 **Who does what.** The core never touches files. It exposes, for a cartridge with a battery:
 the RAM bytes, a way to load them, a "changed since last save" flag, and for MBC3 + timer the
-clock state to write and read back. The frontend owns the file (ADR-018 once agreed).
+clock state to write and read back. The frontend owns the file (ADR-019 once agreed).
 
 **The file.** Next to the ROM, with the extension replaced: `game.gb` → `game.sav`. Contents:
 
@@ -194,7 +194,7 @@ A snapshot of the whole machine, saved and loaded from the window: **F5** saves,
 one file per ROM, `game.state` **(choice)**. Headless mode does not use them; tests call the core
 directly.
 
-**Format** (ADR-019 once agreed). Everything little-endian, written field by field. Never a
+**Format** (ADR-020 once agreed). Everything little-endian, written field by field. Never a
 `memcpy` of a struct, so padding and compiler layout can never leak into the file.
 
 Header, 32 bytes:

@@ -215,3 +215,17 @@ record that supersedes the old one, not by editing history.
 - **Consequences:** No torn frames and the right game speed on any monitor. A 60 Hz monitor shows
   about one frame in 200 twice. When sound arrives (M5), pacing may move to the audio queue; this
   record would then be superseded.
+
+## ADR-017: The object penalty follows intr_2_mode0_timing_sprites, not the Pan Docs
+
+- **Context:** The Pan Docs formula for how much objects lengthen mode 3 charges an object at
+  OAM X = 0 a flat 11 dots. Implemented as written, it matched Mooneye's
+  `intr_2_mode0_timing_sprites` in only 44 of its 105 object layouts.
+- **Decision:** An object at X = 0 follows the same rule as any other X: 6 dots, plus the
+  background-tile wait for the first object on each tile. A line with objects costs 3 dots less in
+  total than that formula gives. Both changes are derived from the test's 105 layouts, not from
+  documentation; `docs/ppu-notes.md`, section 2, has the formula.
+- **Consequences:** The test passes, and a unit test checks all 105 layouts. The test only sees
+  the end of mode 3 to the machine cycle, so the rule is confirmed to 4 dots, not to the dot, and
+  where the 3 dots come from in the hardware is not known. Do not change it back to the Pan Docs
+  version: the unit test and the ROM test will fail.

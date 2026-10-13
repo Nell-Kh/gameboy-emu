@@ -83,20 +83,24 @@ games depend on it (*Road Rash*, *Xerd no Densetsu*). Not targeted in M3; listed
 | 1 | VBlank: lines 144-153 | 4560 (10 lines) | VRAM and OAM |
 
 **Length of mode 3.** Source: Pan Docs, [Rendering, section "Mode 3
-length"](https://gbdev.io/pandocs/Rendering.html#mode-3-length); the object part is what
-`intr_2_mode0_timing_sprites` measures. 172 dots minimum (160 pixels plus 12 dots of start-up
-fetches), plus:
+length"](https://gbdev.io/pandocs/Rendering.html#mode-3-length), with the object part changed to
+match `intr_2_mode0_timing_sprites` (ADR-017). 172 dots minimum (160 pixels plus 12 dots of
+start-up fetches), plus:
 
 - `SCX % 8` dots at the start of the line.
 - 6 dots if the window starts on this line.
-- For each object on the line, 6 to 11 dots: a flat 6, plus `max(0, n - 2)`, where `n` is the
-  number of pixels of the background tile under the object that lie strictly to the right of the
-  object's leftmost pixel. Only the first object on a given background tile pays the second part.
-  An object at OAM X = 0 always costs 11.
-- **Changed after M3 (test).** `intr_2_mode0_timing_sprites` does not match the two rules above in
-  61 of its 105 layouts. What matches all 105: an object at X = 0 follows the same rule as any
-  other X (no flat 11), and a line with objects costs 3 dots less in total. This is what the code
-  does; `tests/unit/ppu_test.cpp` checks all 105 layouts.
+- **Objects (test).** Each object on the line costs 6 dots. The first object on each background
+  tile also waits `max(0, 5 - (X + SCX) % 8)` dots, where X is its OAM X. Objects at OAM X 168 or
+  more cost nothing. A line with objects then costs 3 dots less in total: the penalty is the sum
+  minus 3.
+
+What the Pan Docs say, and why this differs: the Pan Docs give the same 6 dots and the same tile
+wait, but charge an object at OAM X = 0 a flat 11 dots and have no 3-dot credit. Implemented as
+written, that matched `intr_2_mode0_timing_sprites` in only 44 of its 105 layouts: with several
+objects at X = 0 it was far too long, and almost every other mismatch was one machine cycle too
+long. The version above matches all 105, and `tests/unit/ppu_test.cpp` checks every layout. The
+test sees the end of mode 3 only to the machine cycle, so the rule is confirmed to 4 dots; where
+the 3 dots come from in the hardware is not known.
 
 Whatever mode 3 gains, mode 0 loses: the line stays 456 dots.
 

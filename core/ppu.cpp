@@ -371,7 +371,8 @@ void Ppu::draw_object(std::uint8_t object, ObjectColumns& taken) noexcept {
 // Two changes from the Pan Docs, both from Mooneye's intr_2_mode0_timing_sprites,
 // whose 105 object layouts this matches: an object at X = 0 follows the same rule
 // as any other (the Pan Docs give it a flat 11 dots), and a line with objects
-// costs 3 dots less in total.
+// costs 3 dots less in total. Deliberate, not a mistake: see ADR-017 before
+// changing it back to the Pan Docs version.
 std::uint32_t Ppu::object_penalty() const noexcept {
     constexpr std::uint32_t kPerObject = 6;
     constexpr std::uint32_t kMaxTileWait = 5;

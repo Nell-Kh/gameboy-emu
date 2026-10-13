@@ -4,6 +4,12 @@
 
 A Game Boy (DMG) emulator in C++20. Work in progress.
 
+![Libbet and the Magic Floor playing its demo in the emulator's window](docs/media/libbet-demo.gif)
+
+*[Libbet and the Magic Floor](https://github.com/pinobatch/libbet) by Damian Yerrick (zlib
+licence), playing its built-in demo in this emulator's SDL window. Recorded from the window with
+ffmpeg.*
+
 **Status:** CPU, timing, memory and MBC1 complete (`v0.2.0`). M3, the PPU, is in progress: it draws
 the background, window and objects, and runs ROMs in an SDL window with keyboard input. Blargg's
 `cpu_instrs`, `instr_timing` and `mem_timing`, 71 Mooneye tests and dmg-acid2 (pixel-identical) pass

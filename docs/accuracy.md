@@ -99,6 +99,14 @@ dmg-acid2 has no pass or fail verdict of its own; it is checked by the
 `DmgAcid2.FrameMatchesTheReference` test in `rom_tests`, which on a mismatch saves the frame as
 `dmg-acid2-dmg-actual.png` next to the reference and prints the first differing pixel.
 
+## Games checked by hand
+
+Not run in CI: these were run by hand and the screen was checked by eye.
+
+| Game | What was checked | Result |
+|---|---|---|
+| [Libbet and the Magic Floor](https://github.com/pinobatch/libbet) v0.08 (zlib licence), built from source at commit `1232e71` with RGBDS 1.0.4 | title and story screens; the built-in demo; playing the first floor (rolling with the d-pad, the progress counter) | Plays correctly, without sound |
+
 ## Not yet tested in CI
 
 - `oam_dma/sources-GS`: passes its OAM DMA checks in a hand run with a permissive loader, but the

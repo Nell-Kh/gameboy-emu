@@ -6,6 +6,7 @@
 #include <string_view>
 
 #include "core/cartridge/mbc1.h"
+#include "core/cartridge/mbc3.h"
 #include "core/cartridge/mbc5.h"
 #include "core/cartridge/no_mbc.h"
 
@@ -31,13 +32,14 @@ std::string hex_byte(std::uint8_t value) {
     return std::string("0x") + kDigits[value >> 4U] + kDigits[value & 0x0FU];
 }
 
-enum class Mapper : std::uint8_t { None, Mbc1, Mbc5, Mbc5Rumble, Unsupported };
+enum class Mapper : std::uint8_t { None, Mbc1, Mbc3, Mbc5, Mbc5Rumble, Unsupported };
 
 // Whether the cartridge type has a battery to keep its RAM (header 0x0147).
 bool has_battery(std::uint8_t type) {
     switch (type) {
         case 0x03:  // MBC1 + RAM + battery
         case 0x09:  // ROM + RAM + battery
+        case 0x13:  // MBC3 + RAM + battery
         case 0x1B:  // MBC5 + RAM + battery
         case 0x1E:  // MBC5 + rumble + RAM + battery
             return true;
@@ -56,6 +58,10 @@ Mapper mapper_for(std::uint8_t type) {
         case 0x02:  // MBC1 + RAM
         case 0x03:  // MBC1 + RAM + battery
             return Mapper::Mbc1;
+        case 0x11:  // MBC3
+        case 0x12:  // MBC3 + RAM
+        case 0x13:  // MBC3 + RAM + battery
+            return Mapper::Mbc3;
         case 0x19:  // MBC5
         case 0x1A:  // MBC5 + RAM
         case 0x1B:  // MBC5 + RAM + battery
@@ -154,6 +160,8 @@ CartridgeOrError make_cartridge(std::span<const std::uint8_t> rom) {
             return {std::make_unique<NoMbc>(rom, header.ram_size, battery), ""};
         case Mapper::Mbc1:
             return {std::make_unique<Mbc1>(rom, header.ram_size, battery), ""};
+        case Mapper::Mbc3:
+            return {std::make_unique<Mbc3>(rom, header.ram_size, battery), ""};
         case Mapper::Mbc5:
             return {std::make_unique<Mbc5>(rom, header.ram_size, false, battery), ""};
         case Mapper::Mbc5Rumble:

@@ -3,6 +3,7 @@ add_library(core STATIC
   bus.cpp
   cartridge/cartridge.cpp
   cartridge/mbc1.cpp
+  cartridge/mbc3.cpp
   cartridge/mbc5.cpp
   cartridge/no_mbc.cpp
   cpu.cpp

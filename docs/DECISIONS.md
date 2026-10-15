@@ -280,3 +280,16 @@ record that supersedes the old one, not by editing history.
   test relies on timing (the signal comes 0.5 s after the first save, before the next periodic
   write could), so it needs the emulator to run at about a third of real speed or better; it was
   stable in repeated runs with every CPU core busy.
+
+## ADR-022: MBC3 has an 8-bit ROM bank register on ROMs over 2 MiB
+
+- **Context:** Plain MBC3 has 7 ROM bank bits (2 MiB). The MBC30 in the Japanese Pokémon Crystal
+  has 8 bits and uses the same type codes, so the header cannot tell them apart.
+  `mbc3-tester` is type `11` with a 4 MiB ROM, and its reference screenshot ticks all 256 banks.
+- **Decision:** The ROM bank register keeps 7 bits when the ROM is 2 MiB or smaller and 8 bits
+  when it is larger; the result is masked to the ROM's bank count, and `00` selects `01`. The RAM
+  bank register selects banks `00`-`07`, masked to the RAM size.
+- **Consequences:** ROMs of 2 MiB or less behave exactly as plain MBC3 (writing `80` selects bank
+  `01`, as on hardware). On a ROM over 2 MiB the 8-bit register is intended, not a bug: changing
+  it back to 7 bits fails `mbc3-tester`. A plain MBC3 ROM over 2 MiB would be a bad dump, since
+  the chip cannot address it.

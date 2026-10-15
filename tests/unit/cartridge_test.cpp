@@ -76,6 +76,16 @@ TEST(MakeCartridge, Mbc1IsAccepted) {
     }
 }
 
+TEST(MakeCartridge, Mbc3IsAccepted) {
+    for (const std::uint8_t type : {0x11, 0x12, 0x13}) {
+        const auto result = make_cartridge(make_image(0x10000, type, 0x01, 0x03));
+        EXPECT_NE(result.cartridge, nullptr) << "type " << int{type} << ": " << result.error;
+    }
+    const auto battery = make_cartridge(make_image(0x10000, 0x13, 0x01, 0x03));
+    ASSERT_NE(battery.cartridge, nullptr);
+    EXPECT_TRUE(battery.cartridge->has_battery());
+}
+
 TEST(MakeCartridge, Mbc5IsAccepted) {
     for (const std::uint8_t type : {0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E}) {
         const auto result = make_cartridge(make_image(0x10000, type, 0x01, 0x03));
@@ -172,9 +182,9 @@ TEST(MakeCartridge, UnknownSizeCodeIsRejected) {
 }
 
 TEST(MakeCartridge, UnsupportedMapperIsRejectedByName) {
-    const auto result = make_cartridge(make_image(0x8000, 0x13, 0x00, 0x00));
+    const auto result = make_cartridge(make_image(0x8000, 0x05, 0x00, 0x00));  // MBC2
     EXPECT_EQ(result.cartridge, nullptr);
-    EXPECT_EQ(result.error, "cartridge type 0x13 is not supported yet");
+    EXPECT_EQ(result.error, "cartridge type 0x05 is not supported yet");
 }
 
 TEST(MakeCartridge, RomOnlyWithMoreThan8KiBOfRamIsRejected) {

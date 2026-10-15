@@ -88,11 +88,13 @@ Blargg's timing ROMs, from the same repository:
 
 [dmg-acid2](https://github.com/mattcurrie/dmg-acid2) by Matt Currie, from the same c-sp
 collection. When the ROM reaches `LD B, B`, the frame is compared with `dmg-acid2-dmg.png` in
-shades 0-3:
+shades 0-3. `mbc3-tester`, from the same collection, never stops; its frame is compared with
+`mbc3-tester-dmg.png` after 60 frames (c-sp's notes say the result is final after 40):
 
 | ROM | What it covers | Result |
 |---|---|---|
 | `dmg-acid2` | background, window and its line counter, objects, flips, 8x16 objects, object priority, the 10-objects-per-line limit, tile addressing modes | Pixel-identical |
+| `mbc3-tester` | MBC3 ROM banking: all 256 banks of a 4 MiB ROM (the MBC30's 8-bit bank register, ADR-022) | Pixel-identical |
 
 To reproduce one by hand:
 
@@ -100,9 +102,10 @@ To reproduce one by hand:
 ./build/release/app/gameboy-emu --headless path/to/01-special.gb
 ```
 
-dmg-acid2 has no pass or fail verdict of its own; it is checked by the
-`DmgAcid2.FrameMatchesTheReference` test in `rom_tests`, which on a mismatch saves the frame as
-`dmg-acid2-dmg-actual.png` next to the reference and prints the first differing pixel.
+These two ROMs have no pass or fail verdict of their own; they are checked by the
+`DmgAcid2.FrameMatchesTheReference` and `Mbc3Tester.AllBanksAreTickedOff` tests in `rom_tests`,
+which on a mismatch save the frame as `<reference>-actual.png` next to the reference and print the
+first differing pixel.
 
 ## Games checked by hand
 
@@ -214,8 +217,11 @@ that is a bug in this document.
   the second cycle after the write to `0xFF46` until 160 cycles later, as the Mooneye tests check.
   Not modelled: on hardware the CPU also cannot use the bus the DMA is reading from (ROM, work RAM)
   and reads the DMA's byte instead. Here only OAM is blocked; everything else stays usable.
-- **Cartridges:** no mapper (types `0x00`, `0x08`, `0x09`), MBC1 (`0x01`-`0x03`) and MBC5
-  (`0x19`-`0x1E`) are supported; every other type is refused with a message. On MBC5 cartridges
+- **Cartridges:** no mapper (types `0x00`, `0x08`, `0x09`), MBC1 (`0x01`-`0x03`), MBC3 without
+  the clock (`0x11`-`0x13`) and MBC5 (`0x19`-`0x1E`) are supported; every other type, including
+  MBC3 with the clock (`0x0F`, `0x10`) for now, is refused with a message. On MBC3 ROMs over
+  2 MiB the ROM bank register is 8 bits wide, as on the MBC30 (ADR-022); the clock registers
+  (`08`-`0C`) read `0xFF` until the clock is added. On MBC5 cartridges
   with a rumble motor (`0x1C`-`0x1E`) the motor bit is honoured (it no longer selects RAM) but no
   rumble is produced. The file size must match the header. MBC1
   multicarts are not detected. Battery-backed RAM is kept in `game.sav` next to the ROM by the

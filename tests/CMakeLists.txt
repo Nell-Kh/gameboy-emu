@@ -24,6 +24,7 @@ add_executable(unit_tests
   unit/gameboy_test.cpp
   unit/joypad_test.cpp
   unit/mbc1_test.cpp
+  unit/mbc3_test.cpp
   unit/mbc5_test.cpp
   unit/oam_dma_test.cpp
   unit/ppu_render_test.cpp
@@ -84,12 +85,14 @@ if(GB_FETCH_TEST_ROMS)
 
   add_executable(rom_tests
     acid2_test.cpp
+    cartridge_screens_test.cpp
+    screenshot.cpp
     test_roms.cpp
   )
   target_compile_definitions(rom_tests PRIVATE
     GB_TEST_ROM_DIR="${gb_test_roms_SOURCE_DIR}"
     GB_MOONEYE_DIR="${csp_test_roms_SOURCE_DIR}/mooneye-test-suite"
-    GB_ACID2_DIR="${csp_test_roms_SOURCE_DIR}/dmg-acid2"
+    GB_CSP_DIR="${csp_test_roms_SOURCE_DIR}"
   )
   target_link_libraries(rom_tests PRIVATE gb::core stb GTest::gtest_main gb_warnings)
   gtest_discover_tests(rom_tests)

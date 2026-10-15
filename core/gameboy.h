@@ -56,6 +56,17 @@ public:
     // Presses or releases a button. A frontend calls this as input arrives.
     void set_button(Joypad::Button button, bool pressed) noexcept;
 
+    // Battery-backed cartridge RAM, for the frontend's save file
+    // (docs/cartridge-notes.md, section 6). Empty if the cartridge has no
+    // battery or no RAM.
+    [[nodiscard]] std::span<const std::uint8_t> battery_ram() const noexcept;
+    // Loads a save file's RAM. Returns false, and changes nothing, if the
+    // cartridge has no battery RAM or `data` is not exactly its size.
+    [[nodiscard]] bool load_battery_ram(std::span<const std::uint8_t> data) noexcept;
+    // Whether the program has changed battery RAM since the last clear.
+    [[nodiscard]] bool battery_ram_changed() const noexcept;
+    void clear_battery_ram_changed() noexcept;
+
     // The screen: 160x144 shades, 0 (white) to 3 (black), row by row.
     [[nodiscard]] const Ppu::Frame& frame() const noexcept;
 

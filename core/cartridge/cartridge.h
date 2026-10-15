@@ -5,6 +5,7 @@
 #include <memory>
 #include <span>
 #include <string>
+#include <vector>
 
 namespace core {
 
@@ -30,8 +31,33 @@ public:
     [[nodiscard]] virtual std::uint8_t read_ram(std::uint16_t address) const noexcept = 0;
     virtual void write_ram(std::uint16_t address, std::uint8_t value) noexcept = 0;
 
+    // Battery-backed RAM, which the frontend keeps in a save file
+    // (docs/cartridge-notes.md, section 6). The core never touches files.
+    //
+    // True if the cartridge type has a battery and there is RAM for it to keep.
+    [[nodiscard]] bool has_battery() const noexcept;
+    // The whole RAM chip, every bank, as the save file stores it.
+    [[nodiscard]] std::span<const std::uint8_t> ram() const noexcept;
+    // Replaces the RAM contents, as when a save file is loaded. Returns false
+    // and changes nothing if `data` is not exactly the RAM size.
+    [[nodiscard]] bool load_ram(std::span<const std::uint8_t> data) noexcept;
+    // Whether a write has changed any RAM byte since the last clear; the
+    // frontend uses this to decide when to write the save file.
+    [[nodiscard]] bool ram_changed() const noexcept;
+    void clear_ram_changed() noexcept;
+
 protected:
-    Cartridge() = default;
+    Cartridge(std::size_t ram_size, bool battery);
+
+    [[nodiscard]] std::size_t ram_size() const noexcept;
+    // `offset` is into the whole chip and must be below ram_size().
+    [[nodiscard]] std::uint8_t ram_at(std::size_t offset) const noexcept;
+    void set_ram_at(std::size_t offset, std::uint8_t value) noexcept;
+
+private:
+    std::vector<std::uint8_t> ram_;
+    bool battery_;
+    bool ram_changed_ = false;
 };
 
 // What the cartridge header (0x0134-0x014F) says about the hardware.

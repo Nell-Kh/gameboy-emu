@@ -138,6 +138,61 @@ TEST(GameBoy, RunFrameWithTheLcdOffRunsOneFrameOfTicks) {
     EXPECT_LT(ran, GameBoy::kTicksPerFrame + 24);
 }
 
+// An MBC1 + RAM + battery cartridge whose program counts its own boots: it
+// enables RAM, adds one to the byte at 0xA000 and stops in a loop.
+std::vector<std::uint8_t> boot_counter_rom() {
+    auto rom = test::make_rom({
+        0x3E, 0x0A,        // LD A, 0x0A
+        0xEA, 0x00, 0x00,  // LD [0x0000], A   ; enable RAM
+        0xFA, 0x00, 0xA0,  // LD A, [0xA000]
+        0x3C,              // INC A
+        0xEA, 0x00, 0xA0,  // LD [0xA000], A
+        0x18, 0xFE,        // JR -2
+    });
+    rom[0x0147] = 0x03;  // MBC1 + RAM + battery
+    rom[0x0149] = 0x02;  // 8 KiB RAM
+    return rom;
+}
+
+TEST(GameBoy, ASaveSurvivesQuitAndRelaunch) {
+    const auto rom = boot_counter_rom();
+    std::vector<std::uint8_t> save;
+    {
+        GameBoy first;
+        ASSERT_EQ(first.load_rom(rom), "");
+        first.run_for(1000);
+        EXPECT_TRUE(first.battery_ram_changed());
+        save.assign(first.battery_ram().begin(), first.battery_ram().end());
+    }
+    ASSERT_EQ(save.size(), 0x2000U);
+    EXPECT_EQ(save[0], 1);
+
+    GameBoy second;
+    ASSERT_EQ(second.load_rom(rom), "");
+    ASSERT_TRUE(second.load_battery_ram(save));
+    second.run_for(1000);
+    EXPECT_EQ(second.battery_ram()[0], 2);
+    EXPECT_EQ(second.bus().read8(0xA000), 2);
+}
+
+TEST(GameBoy, ACartridgeWithoutABatteryHasNoBatteryRam) {
+    auto rom = boot_counter_rom();
+    rom[0x0147] = 0x02;  // MBC1 + RAM, no battery
+    GameBoy gb;
+    ASSERT_EQ(gb.load_rom(rom), "");
+    gb.run_for(1000);
+    EXPECT_TRUE(gb.battery_ram().empty());
+    EXPECT_FALSE(gb.battery_ram_changed());
+    EXPECT_FALSE(gb.load_battery_ram(std::vector<std::uint8_t>(0x2000, 0x00)));
+}
+
+TEST(GameBoy, LoadBatteryRamRefusesAWrongSize) {
+    GameBoy gb;
+    ASSERT_EQ(gb.load_rom(boot_counter_rom()), "");
+    EXPECT_FALSE(gb.load_battery_ram(std::vector<std::uint8_t>(0x1000, 0x07)));
+    EXPECT_EQ(gb.battery_ram()[0], 0x00);
+}
+
 TEST(GameBoy, BusIsReadableFromOutside) {
     GameBoy gb;
     ASSERT_EQ(gb.load_rom(ok_rom()), "");

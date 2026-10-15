@@ -229,3 +229,27 @@ record that supersedes the old one, not by editing history.
   the end of mode 3 to the machine cycle, so the rule is confirmed to 4 dots, not to the dot, and
   where the 3 dots come from in the hardware is not known. Do not change it back to the Pan Docs
   version: the unit test and the ROM test will fail.
+
+## ADR-018: The cartridge clock runs on emulated time
+
+- **Status:** Accepted in review (`docs/cartridge-notes.md`, section 5); lands with MBC3.
+- **Decision:** The MBC3 clock advances with emulated clock ticks. The wall clock is read only by
+  the frontend when a save file is loaded, to add the seconds the emulator was closed; a halted
+  clock does not advance, and passing day 511 sets the carry bit as ticking would.
+- **Consequences:** rtc3test can pass headless; save states stay deterministic; the core reads no
+  clock. The in-game clock falls behind real time while emulation runs slower than real time.
+
+## ADR-019: Battery saves: the core exposes the RAM, the frontend owns the file
+
+- **Context:** Cartridges with a battery keep their RAM when the Game Boy is off. The core has
+  never touched files (the frontend reads the ROM and passes the bytes in), and headless test
+  runs must stay repeatable.
+- **Decision:** The cartridge holds its RAM and knows from the header type whether it has a
+  battery. `GameBoy` exposes the battery RAM, a load that refuses a wrong size, and a flag set
+  only when a write changes a RAM byte. The frontend owns the file: `game.sav` next to the ROM,
+  raw RAM bytes (plus the BGB clock footer for MBC3 with a timer), written on close, at most once
+  a second while the RAM has changed, and on SIGINT / SIGTERM, always through a temporary file
+  and a rename, never over a file of the wrong size. Headless mode never reads or writes it.
+- **Consequences:** Quit-and-relaunch is tested in the core with no files (a program counts its
+  boots across two `GameBoy`s); the file code is tested separately. A `.sav` moves between
+  emulators that use the same raw format.

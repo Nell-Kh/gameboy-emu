@@ -25,7 +25,8 @@ namespace core {
 // bits 0-2 select a bank; the motor itself is not emulated.
 class Mbc5 final : public Cartridge {
 public:
-    Mbc5(std::span<const std::uint8_t> rom, std::size_t ram_size, bool rumble);
+    Mbc5(std::span<const std::uint8_t> rom, std::size_t ram_size, bool rumble,
+         bool battery = false);
 
     [[nodiscard]] std::uint8_t read_rom(std::uint16_t address) const noexcept override;
     void write_rom(std::uint16_t address, std::uint8_t value) noexcept override;
@@ -41,7 +42,6 @@ private:
     [[nodiscard]] std::size_t ram_offset(std::uint16_t address) const noexcept;
 
     std::vector<std::uint8_t> rom_;
-    std::vector<std::uint8_t> ram_;
     std::size_t rom_bank_mask_;
     std::size_t ram_bank_mask_;
     std::uint8_t ram_bank_bits_;  // 0x0F, or 0x07 with a rumble motor

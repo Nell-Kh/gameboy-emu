@@ -98,6 +98,14 @@ constexpr bool is_io(std::uint16_t address) noexcept {
 
 }  // namespace
 
+Cartridge* Bus::cartridge() noexcept {
+    return cartridge_.get();
+}
+
+const Cartridge* Bus::cartridge() const noexcept {
+    return cartridge_.get();
+}
+
 void Bus::insert_cartridge(std::unique_ptr<Cartridge> cartridge) noexcept {
     cartridge_ = std::move(cartridge);
 }

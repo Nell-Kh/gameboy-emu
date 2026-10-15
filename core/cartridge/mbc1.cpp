@@ -18,9 +18,9 @@ constexpr unsigned kBank2Shift = 5;
 
 }  // namespace
 
-Mbc1::Mbc1(std::span<const std::uint8_t> rom, std::size_t ram_size)
-    : rom_(rom.begin(), rom.end()),
-      ram_(ram_size, 0x00),
+Mbc1::Mbc1(std::span<const std::uint8_t> rom, std::size_t ram_size, bool battery)
+    : Cartridge(ram_size, battery),
+      rom_(rom.begin(), rom.end()),
       rom_bank_mask_(bank_mask(rom_.size(), kRomBankSize)),
       ram_bank_mask_(bank_mask(ram_size, kRamBankSize)) {}
 
@@ -65,22 +65,22 @@ void Mbc1::write_rom(std::uint16_t address, std::uint8_t value) noexcept {
 }
 
 bool Mbc1::ram_accessible() const noexcept {
-    return ram_enabled_ && !ram_.empty();
+    return ram_enabled_ && ram_size() > 0;
 }
 
 // A RAM chip smaller than one bank (2 KiB) repeats across the 8 KiB window.
 std::size_t Mbc1::ram_offset(std::uint16_t address) const noexcept {
-    const std::size_t window = ram_.size() < kRamBankSize ? ram_.size() : kRamBankSize;
+    const std::size_t window = ram_size() < kRamBankSize ? ram_size() : kRamBankSize;
     return ram_bank() * kRamBankSize + ((address - kRamStart) % window);
 }
 
 std::uint8_t Mbc1::read_ram(std::uint16_t address) const noexcept {
-    return ram_accessible() ? ram_[ram_offset(address)] : kOpenBus;
+    return ram_accessible() ? ram_at(ram_offset(address)) : kOpenBus;
 }
 
 void Mbc1::write_ram(std::uint16_t address, std::uint8_t value) noexcept {
     if (ram_accessible()) {
-        ram_[ram_offset(address)] = value;
+        set_ram_at(ram_offset(address), value);
     }
 }
 

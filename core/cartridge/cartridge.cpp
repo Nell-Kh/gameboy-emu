@@ -1,5 +1,6 @@
 #include "core/cartridge/cartridge.h"
 
+#include <algorithm>
 #include <array>
 #include <string>
 #include <string_view>
@@ -32,6 +33,19 @@ std::string hex_byte(std::uint8_t value) {
 
 enum class Mapper : std::uint8_t { None, Mbc1, Mbc5, Mbc5Rumble, Unsupported };
 
+// Whether the cartridge type has a battery to keep its RAM (header 0x0147).
+bool has_battery(std::uint8_t type) {
+    switch (type) {
+        case 0x03:  // MBC1 + RAM + battery
+        case 0x09:  // ROM + RAM + battery
+        case 0x1B:  // MBC5 + RAM + battery
+        case 0x1E:  // MBC5 + rumble + RAM + battery
+            return true;
+        default:
+            return false;
+    }
+}
+
 Mapper mapper_for(std::uint8_t type) {
     switch (type) {
         case 0x00:  // ROM only
@@ -56,6 +70,49 @@ Mapper mapper_for(std::uint8_t type) {
 }
 
 }  // namespace
+
+Cartridge::Cartridge(std::size_t ram_size, bool battery)
+    : ram_(ram_size, 0x00), battery_(battery) {}
+
+bool Cartridge::has_battery() const noexcept {
+    return battery_ && !ram_.empty();
+}
+
+std::span<const std::uint8_t> Cartridge::ram() const noexcept {
+    return ram_;
+}
+
+bool Cartridge::load_ram(std::span<const std::uint8_t> data) noexcept {
+    if (data.size() != ram_.size()) {
+        return false;
+    }
+    std::copy(data.begin(), data.end(), ram_.begin());
+    ram_changed_ = false;
+    return true;
+}
+
+bool Cartridge::ram_changed() const noexcept {
+    return ram_changed_;
+}
+
+void Cartridge::clear_ram_changed() noexcept {
+    ram_changed_ = false;
+}
+
+std::size_t Cartridge::ram_size() const noexcept {
+    return ram_.size();
+}
+
+std::uint8_t Cartridge::ram_at(std::size_t offset) const noexcept {
+    return ram_[offset];
+}
+
+void Cartridge::set_ram_at(std::size_t offset, std::uint8_t value) noexcept {
+    if (ram_[offset] != value) {
+        ram_[offset] = value;
+        ram_changed_ = true;
+    }
+}
 
 CartridgeHeader read_header(std::span<const std::uint8_t> rom) {
     CartridgeHeader header;
@@ -88,18 +145,19 @@ CartridgeOrError make_cartridge(std::span<const std::uint8_t> rom) {
         return {nullptr, "the header says the ROM is " + std::to_string(header.rom_size) +
                              " bytes but the file is " + std::to_string(rom.size())};
     }
+    const bool battery = has_battery(header.type);
     switch (mapper_for(header.type)) {
         case Mapper::None:
             if (header.ram_size > 0x2000) {
                 return {nullptr, "a cartridge without a mapper cannot have more than 8 KiB of RAM"};
             }
-            return {std::make_unique<NoMbc>(rom, header.ram_size), ""};
+            return {std::make_unique<NoMbc>(rom, header.ram_size, battery), ""};
         case Mapper::Mbc1:
-            return {std::make_unique<Mbc1>(rom, header.ram_size), ""};
+            return {std::make_unique<Mbc1>(rom, header.ram_size, battery), ""};
         case Mapper::Mbc5:
-            return {std::make_unique<Mbc5>(rom, header.ram_size, false), ""};
+            return {std::make_unique<Mbc5>(rom, header.ram_size, false, battery), ""};
         case Mapper::Mbc5Rumble:
-            return {std::make_unique<Mbc5>(rom, header.ram_size, true), ""};
+            return {std::make_unique<Mbc5>(rom, header.ram_size, true, battery), ""};
         case Mapper::Unsupported:
             break;
     }

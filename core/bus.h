@@ -44,6 +44,10 @@ public:
     // the cartridge areas read 0xFF.
     void insert_cartridge(std::unique_ptr<Cartridge> cartridge) noexcept;
 
+    // The inserted cartridge, or null.
+    [[nodiscard]] Cartridge* cartridge() noexcept;
+    [[nodiscard]] const Cartridge* cartridge() const noexcept;
+
     // Test convenience: inserts `rom` as a cartridge with no mapper and no
     // RAM, without looking at its header.
     void load_rom(std::span<const std::uint8_t> rom);

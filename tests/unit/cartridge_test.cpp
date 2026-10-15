@@ -91,6 +91,67 @@ TEST(MakeCartridge, Mbc5MapsBank0High) {
     EXPECT_EQ(result.cartridge->read_rom(0x4000), 0);  // on MBC1 this would be bank 1
 }
 
+TEST(BatteryRam, OnlyBatteryTypesWithRamHaveIt) {
+    for (const std::uint8_t type : {0x03, 0x09, 0x1B, 0x1E}) {
+        const auto result = make_cartridge(make_image(0x8000, type, 0x00, 0x02));
+        ASSERT_NE(result.cartridge, nullptr) << result.error;
+        EXPECT_TRUE(result.cartridge->has_battery()) << "type " << int{type};
+    }
+    for (const std::uint8_t type : {0x02, 0x08, 0x1A, 0x1D}) {
+        const auto result = make_cartridge(make_image(0x8000, type, 0x00, 0x02));
+        ASSERT_NE(result.cartridge, nullptr) << result.error;
+        EXPECT_FALSE(result.cartridge->has_battery()) << "type " << int{type};
+    }
+    const auto no_ram = make_cartridge(make_image(0x8000, 0x03, 0x00, 0x00));
+    ASSERT_NE(no_ram.cartridge, nullptr) << no_ram.error;
+    EXPECT_FALSE(no_ram.cartridge->has_battery());
+}
+
+TEST(BatteryRam, CoversEveryBankOfTheChip) {
+    const auto result = make_cartridge(make_image(0x8000, 0x03, 0x00, 0x03));  // 32 KiB
+    ASSERT_NE(result.cartridge, nullptr) << result.error;
+    EXPECT_EQ(result.cartridge->ram().size(), 0x8000U);
+}
+
+TEST(BatteryRam, ChangedOnlyWhenAWriteChangesAByte) {
+    const auto result = make_cartridge(make_image(0x8000, 0x03, 0x00, 0x02));
+    ASSERT_NE(result.cartridge, nullptr) << result.error;
+    Cartridge& cart = *result.cartridge;
+    cart.write_rom(0x0000, 0x0A);  // enable RAM
+    cart.write_ram(0xA000, 0x00);  // same as power-on
+    EXPECT_FALSE(cart.ram_changed());
+    cart.write_ram(0xA000, 0x05);
+    EXPECT_TRUE(cart.ram_changed());
+    cart.clear_ram_changed();
+    EXPECT_FALSE(cart.ram_changed());
+    cart.write_ram(0xA000, 0x05);
+    EXPECT_FALSE(cart.ram_changed());
+}
+
+TEST(BatteryRam, DisabledRamIsNotChanged) {
+    const auto result = make_cartridge(make_image(0x8000, 0x03, 0x00, 0x02));
+    ASSERT_NE(result.cartridge, nullptr) << result.error;
+    result.cartridge->write_ram(0xA000, 0x05);  // RAM not enabled
+    EXPECT_FALSE(result.cartridge->ram_changed());
+    EXPECT_EQ(result.cartridge->ram()[0], 0x00);
+}
+
+TEST(BatteryRam, LoadReplacesTheContentsAndRefusesAWrongSize) {
+    const auto result = make_cartridge(make_image(0x8000, 0x03, 0x00, 0x02));
+    ASSERT_NE(result.cartridge, nullptr) << result.error;
+    Cartridge& cart = *result.cartridge;
+    std::vector<std::uint8_t> save(0x2000, 0x00);
+    save[0] = 0x11;
+    save[0x1FFF] = 0x22;
+    EXPECT_FALSE(cart.load_ram(std::vector<std::uint8_t>(0x1FFF, 0x33)));
+    EXPECT_EQ(cart.ram()[0], 0x00);
+    ASSERT_TRUE(cart.load_ram(save));
+    EXPECT_FALSE(cart.ram_changed());
+    cart.write_rom(0x0000, 0x0A);
+    EXPECT_EQ(cart.read_ram(0xA000), 0x11);
+    EXPECT_EQ(cart.read_ram(0xBFFF), 0x22);
+}
+
 TEST(MakeCartridge, TooSmallFileIsRejected) {
     const std::vector<std::uint8_t> tiny(0x100, 0x00);
     const auto result = make_cartridge(tiny);

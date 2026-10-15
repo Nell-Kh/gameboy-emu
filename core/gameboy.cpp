@@ -22,6 +22,30 @@ void GameBoy::set_button(Joypad::Button button, bool pressed) noexcept {
     bus_.set_button(button, pressed);
 }
 
+std::span<const std::uint8_t> GameBoy::battery_ram() const noexcept {
+    const Cartridge* cartridge = bus_.cartridge();
+    if (cartridge == nullptr || !cartridge->has_battery()) {
+        return {};
+    }
+    return cartridge->ram();
+}
+
+bool GameBoy::load_battery_ram(std::span<const std::uint8_t> data) noexcept {
+    Cartridge* cartridge = bus_.cartridge();
+    return cartridge != nullptr && cartridge->has_battery() && cartridge->load_ram(data);
+}
+
+bool GameBoy::battery_ram_changed() const noexcept {
+    const Cartridge* cartridge = bus_.cartridge();
+    return cartridge != nullptr && cartridge->has_battery() && cartridge->ram_changed();
+}
+
+void GameBoy::clear_battery_ram_changed() noexcept {
+    if (Cartridge* cartridge = bus_.cartridge(); cartridge != nullptr) {
+        cartridge->clear_ram_changed();
+    }
+}
+
 std::uint32_t GameBoy::step() {
     return cpu_.step();
 }

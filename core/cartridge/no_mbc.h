@@ -13,7 +13,7 @@ namespace core {
 // address bus, and optionally up to 8 KiB of RAM, always enabled.
 class NoMbc final : public Cartridge {
 public:
-    NoMbc(std::span<const std::uint8_t> rom, std::size_t ram_size);
+    NoMbc(std::span<const std::uint8_t> rom, std::size_t ram_size, bool battery = false);
 
     [[nodiscard]] std::uint8_t read_rom(std::uint16_t address) const noexcept override;
     void write_rom(std::uint16_t address, std::uint8_t value) noexcept override;
@@ -22,7 +22,6 @@ public:
 
 private:
     std::vector<std::uint8_t> rom_;
-    std::vector<std::uint8_t> ram_;
 };
 
 }  // namespace core

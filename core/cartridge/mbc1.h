@@ -28,7 +28,7 @@ namespace core {
 // four lines, are not supported.
 class Mbc1 final : public Cartridge {
 public:
-    Mbc1(std::span<const std::uint8_t> rom, std::size_t ram_size);
+    Mbc1(std::span<const std::uint8_t> rom, std::size_t ram_size, bool battery = false);
 
     [[nodiscard]] std::uint8_t read_rom(std::uint16_t address) const noexcept override;
     void write_rom(std::uint16_t address, std::uint8_t value) noexcept override;
@@ -45,7 +45,6 @@ private:
     [[nodiscard]] std::size_t ram_offset(std::uint16_t address) const noexcept;
 
     std::vector<std::uint8_t> rom_;
-    std::vector<std::uint8_t> ram_;
     std::size_t rom_bank_mask_;
     std::size_t ram_bank_mask_;
 

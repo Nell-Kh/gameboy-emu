@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "app/save_file.h"
 #include "app/sdl_frontend.h"
 #include "core/gameboy.h"
 
@@ -60,6 +61,7 @@ void print_usage(std::ostream& out) {
         << "\n"
         << "  Keys: arrows = d-pad, X = A, Z = B, Enter = Start, Backspace = Select,\n"
         << "        Esc = quit\n"
+        << "  Battery saves are kept next to the ROM, with the extension .sav.\n"
         << "\n"
         << "  --headless       run ROM without a window and print its serial output\n"
         << "  --max-seconds N  give up after N emulated seconds (default " << kDefaultMaxSeconds
@@ -288,6 +290,11 @@ int main(int argc, char** argv) {
     if (options->headless) {
         return run_headless(gb, *options);
     }
+    // Battery saves live next to the ROM; headless runs never touch them.
+    frontend::BatterySaver saver(gb, frontend::save_path_for(options->rom_path), std::cerr);
     const std::string name = std::filesystem::path(options->rom_path).filename().string();
-    return frontend::run_window(gb, {.title = name + " - gameboy-emu", .scale = options->scale});
+    const int status = frontend::run_window(
+        gb, {.title = name + " - gameboy-emu", .scale = options->scale}, &saver);
+    saver.flush();
+    return status;
 }

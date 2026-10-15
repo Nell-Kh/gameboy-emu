@@ -216,8 +216,9 @@ that is a bug in this document.
   (`0x19`-`0x1E`) are supported; every other type is refused with a message. On MBC5 cartridges
   with a rumble motor (`0x1C`-`0x1E`) the motor bit is honoured (it no longer selects RAM) but no
   rumble is produced. The file size must match the header. MBC1
-  multicarts are not detected. Battery-backed RAM works but is lost when the program exits
-  (`.sav` files are M4). The header checksum is not checked; the real boot ROM would refuse to
+  multicarts are not detected. Battery-backed RAM is kept in `game.sav` next to the ROM by the
+  window (never in headless mode): written on exit, on SIGINT / SIGTERM, and at most once a
+  second while it changes; a save file of the wrong size is neither loaded nor overwritten. The header checksum is not checked; the real boot ROM would refuse to
   start a cartridge with a bad one.
 - **I/O registers:** joypad, serial, timer, interrupt and all LCD registers (`FF40`-`FF4B`) are
   emulated. Addresses with no register read `0xFF`. The sound registers are plain memory whose

@@ -29,13 +29,14 @@ add_executable(unit_tests
   unit/ppu_render_test.cpp
   unit/ppu_test.cpp
   unit/registers_test.cpp
+  unit/save_file_test.cpp
   unit/serial_test.cpp
   unit/smoke_test.cpp
   unit/timer_test.cpp
 )
 
 target_include_directories(unit_tests PRIVATE unit)
-target_link_libraries(unit_tests PRIVATE gb::core GTest::gtest_main gb_warnings)
+target_link_libraries(unit_tests PRIVATE gb::core frontend GTest::gtest_main gb_warnings)
 
 # Registers every TEST(...) with CTest, so `ctest` lists them one by one.
 include(GoogleTest)

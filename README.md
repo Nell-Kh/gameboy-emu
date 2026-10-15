@@ -52,7 +52,8 @@ otherwise, is stored in this repository. The tests read PNG screenshots with
 | Select | Backspace |
 
 Escape closes the window. `--scale N` sets the window size to N times 160x144 (default 4); the
-window can also be resized. Bring your own ROM: none is included.
+window can also be resized. Games with battery saves keep them in a `.sav` file next to the ROM,
+written when the window closes and while you play. Bring your own ROM: none is included.
 
 ## Run a test ROM
 

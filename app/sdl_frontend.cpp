@@ -164,7 +164,15 @@ private:
 
 }  // namespace
 
-int run_window(core::GameBoy& gb, const WindowOptions& options) {
+int run_window(core::GameBoy& gb, const WindowOptions& options, BatterySaver* saver) {
+    // SIGINT and SIGTERM must reach us as SDL's quit event, so that closing the
+    // terminal still writes the save file (ADR-019). SDL skips installing its
+    // signal handlers when this hint is set; refuse to run without them.
+    if (SDL_GetHintBoolean(SDL_HINT_NO_SIGNAL_HANDLERS, SDL_FALSE) == SDL_TRUE) {
+        std::cerr << "gameboy-emu: SDL_HINT_NO_SIGNAL_HANDLERS is set; the save file would not "
+                     "be written on SIGINT or SIGTERM\n";
+        return kExitSdlError;
+    }
     SDL_SetMainReady();
     const SdlVideo video;
     if (!video.ok()) {
@@ -208,6 +216,9 @@ int run_window(core::GameBoy& gb, const WindowOptions& options) {
     std::array<std::uint32_t, static_cast<std::size_t>(kWidth) * kHeight> pixels{};
     while (session.handle_events()) {
         gb.run_frame();
+        if (saver != nullptr) {
+            saver->tick(BatterySaver::Clock::now());
+        }
 
         const core::Ppu::Frame& frame = gb.frame();
         for (std::size_t i = 0; i < pixels.size(); ++i) {

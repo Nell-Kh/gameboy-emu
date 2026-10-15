@@ -72,6 +72,14 @@ void Mbc3::tick(std::uint32_t t_cycles) noexcept {
     }
 }
 
+Rtc* Mbc3::clock() noexcept {
+    return clock_ ? &rtc_ : nullptr;
+}
+
+const Rtc* Mbc3::clock() const noexcept {
+    return clock_ ? &rtc_ : nullptr;
+}
+
 bool Mbc3::clock_selected() const noexcept {
     return enabled_ && clock_ && select_ >= kFirstClockRegister && select_ <= kLastClockRegister;
 }
@@ -100,6 +108,7 @@ std::uint8_t Mbc3::read_ram(std::uint16_t address) const noexcept {
 void Mbc3::write_ram(std::uint16_t address, std::uint8_t value) noexcept {
     if (clock_selected()) {
         rtc_.write(clock_register(), value);
+        mark_changed();
     } else if (ram_selected()) {
         set_ram_at(ram_offset(address), value);
     }

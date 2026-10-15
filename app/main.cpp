@@ -61,7 +61,8 @@ void print_usage(std::ostream& out) {
         << "\n"
         << "  Keys: arrows = d-pad, X = A, Z = B, Enter = Start, Backspace = Select,\n"
         << "        Esc = quit\n"
-        << "  Battery saves are kept next to the ROM, with the extension .sav.\n"
+        << "  Battery saves (and a cartridge clock) are kept next to the ROM, with the\n"
+        << "  extension .sav.\n"
         << "\n"
         << "  --headless       run ROM without a window and print its serial output\n"
         << "  --max-seconds N  give up after N emulated seconds (default " << kDefaultMaxSeconds

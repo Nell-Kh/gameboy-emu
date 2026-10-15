@@ -86,7 +86,7 @@ Cartridge::Cartridge(std::size_t ram_size, bool battery)
     : ram_(ram_size, 0x00), battery_(battery) {}
 
 bool Cartridge::has_battery() const noexcept {
-    return battery_ && !ram_.empty();
+    return battery_ && (!ram_.empty() || clock() != nullptr);
 }
 
 std::span<const std::uint8_t> Cartridge::ram() const noexcept {
@@ -108,6 +108,10 @@ bool Cartridge::ram_changed() const noexcept {
 
 void Cartridge::clear_ram_changed() noexcept {
     ram_changed_ = false;
+}
+
+void Cartridge::mark_changed() noexcept {
+    ram_changed_ = true;
 }
 
 std::size_t Cartridge::ram_size() const noexcept {

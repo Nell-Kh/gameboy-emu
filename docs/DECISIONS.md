@@ -232,8 +232,9 @@ record that supersedes the old one, not by editing history.
 
 ## ADR-018: The cartridge clock runs on emulated time
 
-- **Status:** Accepted in review (`docs/cartridge-notes.md`, section 5). The clock is in; the
-  catch-up at load comes with the clock's place in the save file.
+- **Status:** Accepted in review (`docs/cartridge-notes.md`, section 5). Done: the clock, its
+  footer in the save file, and the catch-up at load, which a unit test checks against
+  second-by-second ticking.
 - **Decision:** The MBC3 clock advances with emulated clock ticks. The wall clock is read only by
   the frontend when a save file is loaded, to add the seconds the emulator was closed; a halted
   clock does not advance, and passing day 511 sets the carry bit as ticking would.

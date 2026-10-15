@@ -6,6 +6,7 @@
 #include <string_view>
 
 #include "core/bus.h"
+#include "core/cartridge/rtc.h"
 #include "core/cpu.h"
 
 namespace core {
@@ -56,16 +57,24 @@ public:
     // Presses or releases a button. A frontend calls this as input arrives.
     void set_button(Joypad::Button button, bool pressed) noexcept;
 
-    // Battery-backed cartridge RAM, for the frontend's save file
-    // (docs/cartridge-notes.md, section 6). Empty if the cartridge has no
-    // battery or no RAM.
+    // Whether the cartridge has a battery with something to keep (RAM, a
+    // clock or both), so the frontend keeps a save file for it
+    // (docs/cartridge-notes.md, section 6).
+    [[nodiscard]] bool has_battery() const noexcept;
+    // Battery-backed cartridge RAM, for the save file. Empty if the cartridge
+    // has no battery or no RAM.
     [[nodiscard]] std::span<const std::uint8_t> battery_ram() const noexcept;
     // Loads a save file's RAM. Returns false, and changes nothing, if the
     // cartridge has no battery RAM or `data` is not exactly its size.
     [[nodiscard]] bool load_battery_ram(std::span<const std::uint8_t> data) noexcept;
-    // Whether the program has changed battery RAM since the last clear.
+    // Whether the program has changed battery RAM, or written a clock
+    // register, since the last clear.
     [[nodiscard]] bool battery_ram_changed() const noexcept;
     void clear_battery_ram_changed() noexcept;
+    // The cartridge's real-time clock (MBC3 + timer), for the save file's
+    // clock footer and the catch-up at load; null for every other cartridge.
+    [[nodiscard]] Rtc* clock() noexcept;
+    [[nodiscard]] const Rtc* clock() const noexcept;
 
     // The screen: 160x144 shades, 0 (white) to 3 (black), row by row.
     [[nodiscard]] const Ppu::Frame& frame() const noexcept;

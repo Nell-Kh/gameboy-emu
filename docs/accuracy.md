@@ -230,12 +230,19 @@ that is a bug in this document.
   multicarts are not detected. The header checksum is not checked; the real boot ROM would refuse
   to start a cartridge with a bad one.
 - **Battery saves:** battery-backed RAM is kept in `game.sav` next to the ROM by the window (never
-  in headless mode): written on exit, on SIGINT / SIGTERM, and at most once a second while it
-  changes; a save file of the wrong size is neither loaded nor overwritten.
+  in headless mode): written on exit, on SIGINT / SIGTERM, and at most once a second while the
+  program changes it; a save file of the wrong size is neither loaded nor overwritten. For MBC3
+  with a timer, BGB's 48-byte clock footer follows the RAM (the 44-byte form is also read), so
+  the file is RAM + 48 bytes, or 48 bytes with no RAM.
 - **MBC3 clock** (types `0x0F`, `0x10`): counts emulated time, not the wall clock (ADR-018), so
-  it falls behind real time whenever emulation runs slower than real time. It starts at day 0,
-  00:00:00 and running; on hardware the registers start with whatever the chip held. The clock
-  is not yet kept in the save file, so it restarts from zero each time the ROM is loaded.
+  it falls behind real time whenever emulation runs slower than real time. With no save file it
+  starts at day 0, 00:00:00 and running; on hardware the registers start with whatever the chip
+  held. When a save is loaded, the seconds since it was written are added (none if the clock was
+  halted or the saved time is in the future; passing day 511 sets the carry), matching
+  second-by-second ticking. The footer has no room for the fraction of a second, so the second
+  in progress restarts at load. The clock is always written on exit, but during play only when
+  the program changes RAM or a clock register; after a crash, the catch-up from the last write
+  still brings it forward to real time.
 - **I/O registers:** joypad, serial, timer, interrupt and all LCD registers (`FF40`-`FF4B`) are
   emulated. Addresses with no register read `0xFF`. The sound registers are plain memory whose
   unused and write-only bits read as 1. They start at 0, not at their post-boot values, and have

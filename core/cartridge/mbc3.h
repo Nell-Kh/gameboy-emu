@@ -42,12 +42,8 @@ public:
     [[nodiscard]] std::size_t rom_bank() const noexcept;  // at 0x4000-0x7FFF
     [[nodiscard]] std::size_t ram_bank() const noexcept;
 
-    [[nodiscard]] bool has_clock() const noexcept {
-        return clock_;
-    }
-    [[nodiscard]] const Rtc& rtc() const noexcept {
-        return rtc_;
-    }
+    [[nodiscard]] Rtc* clock() noexcept override;
+    [[nodiscard]] const Rtc* clock() const noexcept override;
 
 private:
     [[nodiscard]] bool ram_selected() const noexcept;

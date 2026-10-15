@@ -44,18 +44,32 @@ public:
     // progress; the other registers leave it alone.
     void write(Register reg, std::uint8_t value) noexcept;
 
-    // The live registers and the clock ticks into the current second, for
-    // tests and, later, the save file.
+    // Both register sets, for the save file and tests, and the clock ticks
+    // into the current second.
     [[nodiscard]] const Registers& live() const noexcept {
         return live_;
+    }
+    [[nodiscard]] const Registers& latched() const noexcept {
+        return latched_;
     }
     [[nodiscard]] std::uint32_t sub_second() const noexcept {
         return sub_second_;
     }
     [[nodiscard]] bool halted() const noexcept;
 
+    // Sets both register sets, as when a save file is loaded. Keeps only the
+    // bits that exist; the second in progress starts again from zero.
+    void restore(const Registers& live, const Registers& latched) noexcept;
+
+    // Adds `seconds` to the live registers in one go, giving exactly what
+    // that many ticks would (the catch-up at load, ADR-018): a halted clock
+    // does not move, invalid values count on and wrap as when ticking, and
+    // passing day 511 sets the carry bit. The second in progress is kept.
+    void advance_seconds(std::uint64_t seconds) noexcept;
+
 private:
     void step_second() noexcept;
+    [[nodiscard]] bool time_is_valid() const noexcept;
 
     Registers live_{};
     Registers latched_{};

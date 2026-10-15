@@ -182,8 +182,9 @@ ADR-019.**
 **Loading,** when the ROM is opened in the window:
 
 - No file: start with RAM as the cartridge powers on.
-- File of the right size (RAM, or RAM + 44 / + 48 with a timer): load it, then advance the clock
-  by `now - saved time` seconds. A saved time in the future is ignored, as BGB and VBA-M do.
+- File of the right size (RAM, or RAM + 44 / + 48 with a timer; with a timer, the RAM alone is
+  the wrong size): load it, then advance the clock by `now - saved time` seconds. A saved time in
+  the future is ignored, as BGB and VBA-M do.
 - Any other size: do not load it, print why, and **never overwrite it**, so a file from another
   emulator or a different ROM is not destroyed.
 

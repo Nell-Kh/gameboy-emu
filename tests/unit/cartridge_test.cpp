@@ -93,6 +93,12 @@ TEST(MakeCartridge, Mbc3WithATimerIsAccepted) {
     const auto timer_ram = make_cartridge(make_image(0x8000, 0x10, 0x00, 0x03));
     ASSERT_NE(timer_ram.cartridge, nullptr) << timer_ram.error;
     EXPECT_TRUE(timer_ram.cartridge->has_battery());
+    EXPECT_NE(timer_ram.cartridge->clock(), nullptr);
+    // With no RAM, the battery still has the clock to keep.
+    EXPECT_TRUE(timer.cartridge->has_battery());
+    EXPECT_NE(timer.cartridge->clock(), nullptr);
+    const auto no_timer = make_cartridge(make_image(0x8000, 0x13, 0x00, 0x03));
+    EXPECT_EQ(no_timer.cartridge->clock(), nullptr);
 
     // The clock is there: after an emulated second, a latched read gives 1.
     auto& cart = *timer.cartridge;

@@ -22,6 +22,21 @@ void GameBoy::set_button(Joypad::Button button, bool pressed) noexcept {
     bus_.set_button(button, pressed);
 }
 
+bool GameBoy::has_battery() const noexcept {
+    const Cartridge* cartridge = bus_.cartridge();
+    return cartridge != nullptr && cartridge->has_battery();
+}
+
+Rtc* GameBoy::clock() noexcept {
+    Cartridge* cartridge = bus_.cartridge();
+    return cartridge != nullptr ? cartridge->clock() : nullptr;
+}
+
+const Rtc* GameBoy::clock() const noexcept {
+    const Cartridge* cartridge = bus_.cartridge();
+    return cartridge != nullptr ? cartridge->clock() : nullptr;
+}
+
 std::span<const std::uint8_t> GameBoy::battery_ram() const noexcept {
     const Cartridge* cartridge = bus_.cartridge();
     if (cartridge == nullptr || !cartridge->has_battery()) {

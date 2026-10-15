@@ -2,7 +2,9 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -18,6 +20,7 @@ namespace {
 
 namespace fs = std::filesystem;
 using frontend::BatterySaver;
+using frontend::ClockFooter;
 using frontend::SaveRead;
 using namespace std::chrono_literals;
 
@@ -195,6 +198,179 @@ TEST_F(SaveFile, FlushWritesTheLatestRam) {
     const auto saved = read_file(path("game.sav"));
     ASSERT_EQ(saved.size(), kRamSize);
     EXPECT_EQ(saved[0], 1);
+}
+
+// The clock footer (BGB's format) and the clock in the save file.
+
+using Registers = core::Rtc::Registers;
+constexpr std::int64_t kSavedAt = 1'700'000'000;  // a Unix time in 2023
+constexpr std::uint64_t kDay = 86'400;
+
+TEST(ClockFooter, EncodesEachRegisterAsA32BitFieldThenThe64BitTime) {
+    const ClockFooter footer{{1, 2, 3, 4, 0xC1}, {5, 6, 7, 8, 0x40}, 0x0102030405060708};
+    const auto bytes = frontend::encode_clock_footer(footer);
+    std::vector<std::uint8_t> expected(48, 0x00);
+    const std::vector<std::uint8_t> values = {1, 2, 3, 4, 0xC1, 5, 6, 7, 8, 0x40};
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        expected[i * 4] = values[i];
+    }
+    const std::vector<std::uint8_t> time = {8, 7, 6, 5, 4, 3, 2, 1};
+    std::copy(time.begin(), time.end(), expected.begin() + 40);
+    EXPECT_EQ(std::vector<std::uint8_t>(bytes.begin(), bytes.end()), expected);
+}
+
+TEST(ClockFooter, DecodesWhatItEncodes) {
+    const ClockFooter footer{{59, 59, 23, 0xFF, 0x81}, {1, 2, 3, 4, 0}, kSavedAt};
+    const auto bytes = frontend::encode_clock_footer(footer);
+    const auto result = frontend::decode_clock_footer(bytes);
+    ASSERT_TRUE(result.has_value());
+    const ClockFooter decoded = result.value_or(ClockFooter{});
+    EXPECT_EQ(decoded.live, footer.live);
+    EXPECT_EQ(decoded.latched, footer.latched);
+    EXPECT_EQ(decoded.saved_at, kSavedAt);
+}
+
+TEST(ClockFooter, Accepts44BytesWithA32BitTimeAndIgnoresTheHighBytesOfEachField) {
+    std::vector<std::uint8_t> bytes(44, 0x00);
+    bytes[0] = 30;    // live seconds
+    bytes[1] = 0xEE;  // not part of the value
+    bytes[20] = 31;   // latched seconds
+    bytes[40] = 0x00;
+    bytes[41] = 0xF1;
+    bytes[42] = 0x53;
+    bytes[43] = 0x65;  // 0x6553F100 = 1700000000
+    const auto result = frontend::decode_clock_footer(bytes);
+    ASSERT_TRUE(result.has_value());
+    const ClockFooter decoded = result.value_or(ClockFooter{});
+    EXPECT_EQ(decoded.live[0], 30);
+    EXPECT_EQ(decoded.latched[0], 31);
+    EXPECT_EQ(decoded.saved_at, kSavedAt);
+}
+
+TEST(ClockFooter, RefusesAnyOtherSize) {
+    for (const std::size_t size : {0, 40, 43, 45, 47, 49}) {
+        EXPECT_FALSE(frontend::decode_clock_footer(std::vector<std::uint8_t>(size)).has_value())
+            << size;
+    }
+}
+
+TEST_F(SaveFile, WithAClockTheFooterFollowsTheRam) {
+    const std::vector<std::uint8_t> ram(kRamSize, 0x5A);
+    const ClockFooter footer{{1, 2, 3, 4, 0}, {1, 2, 3, 4, 0}, kSavedAt};
+    ASSERT_EQ(frontend::write_save(path("game.sav"), ram, &footer), "");
+    const auto saved = read_file(path("game.sav"));
+    ASSERT_EQ(saved.size(), kRamSize + 48);
+    EXPECT_EQ(saved[kRamSize - 1], 0x5A);
+    EXPECT_EQ(saved[kRamSize], 1);
+
+    const SaveRead read = frontend::read_save(path("game.sav"), kRamSize, true);
+    ASSERT_EQ(read.status, SaveRead::Status::Loaded);
+    EXPECT_EQ(read.ram, ram);
+    ASSERT_TRUE(read.clock.has_value());
+    const ClockFooter clock = read.clock.value_or(ClockFooter{});
+    EXPECT_EQ(clock.live, footer.live);
+    EXPECT_EQ(clock.saved_at, kSavedAt);
+}
+
+TEST_F(SaveFile, WithAClockOnlyRamPlus44Or48BytesIsTheRightSize) {
+    for (const std::size_t extra : {0, 1, 40, 47, 49, 96}) {
+        write_file(path("game.sav"), std::vector<std::uint8_t>(kRamSize + extra));
+        const SaveRead read = frontend::read_save(path("game.sav"), kRamSize, true);
+        EXPECT_EQ(read.status, SaveRead::Status::WrongSize) << extra;
+        EXPECT_NE(read.message.find("8240 or 8236 bytes"), std::string::npos) << read.message;
+    }
+    write_file(path("game.sav"), std::vector<std::uint8_t>(kRamSize + 44));
+    EXPECT_EQ(frontend::read_save(path("game.sav"), kRamSize, true).status,
+              SaveRead::Status::Loaded);
+}
+
+// MBC3 + timer + battery (0x0F, no RAM) or with 8 KiB RAM (0x10), running a
+// program that loops forever and touches nothing.
+std::vector<std::uint8_t> clock_rom(bool with_ram) {
+    auto rom = test::make_rom({0x18, 0xFE});  // JR -2
+    rom[0x0147] = with_ram ? 0x10 : 0x0F;
+    rom[0x0149] = with_ram ? 0x02 : 0x00;
+    return rom;
+}
+
+void write_clock_save(const fs::path& path, std::size_t ram_size, const ClockFooter& footer) {
+    ASSERT_EQ(frontend::write_save(path, std::vector<std::uint8_t>(ram_size, 0x00), &footer), "");
+}
+
+TEST_F(SaveFile, SaverAddsTheSecondsSinceTheSaveToTheClock) {
+    // 1 day, 1 hour, 1 minute and 1 second later.
+    write_clock_save(path("game.sav"), kRamSize, {{0, 0, 0, 0, 0}, {9, 9, 9, 9, 0}, kSavedAt});
+    core::GameBoy gb;
+    ASSERT_EQ(gb.load_rom(clock_rom(true)), "");
+    std::ostringstream log;
+    const BatterySaver saver(gb, path("game.sav"), log, [] { return kSavedAt + 90'061; });
+    EXPECT_TRUE(saver.active());
+    ASSERT_NE(gb.clock(), nullptr);
+    EXPECT_EQ(gb.clock()->live(), (Registers{1, 1, 1, 1, 0}));
+    EXPECT_EQ(gb.clock()->latched(), (Registers{9, 9, 9, 9, 0}));  // as saved
+    EXPECT_EQ(log.str(), "");
+}
+
+TEST_F(SaveFile, SaverCatchUpPassingDay511SetsTheCarry) {
+    write_clock_save(path("game.sav"), 0, {{0, 0, 12, 0xFF, 0x01}, {}, kSavedAt});
+    core::GameBoy gb;
+    ASSERT_EQ(gb.load_rom(clock_rom(false)), "");
+    std::ostringstream log;
+    const BatterySaver saver(gb, path("game.sav"), log, [] { return kSavedAt + kDay; });
+    EXPECT_EQ(gb.clock()->live(), (Registers{0, 0, 12, 0x00, 0x80}));
+}
+
+TEST_F(SaveFile, SaverLeavesAHaltedClockAndIgnoresATimeInTheFuture) {
+    write_clock_save(path("game.sav"), 0, {{1, 2, 3, 4, 0x40}, {}, kSavedAt});
+    core::GameBoy halted;
+    ASSERT_EQ(halted.load_rom(clock_rom(false)), "");
+    std::ostringstream log;
+    const BatterySaver halted_saver(halted, path("game.sav"), log, [] { return kSavedAt + kDay; });
+    EXPECT_EQ(halted.clock()->live(), (Registers{1, 2, 3, 4, 0x40}));
+
+    write_clock_save(path("game.sav"), 0, {{1, 2, 3, 4, 0}, {}, kSavedAt});
+    core::GameBoy future;
+    ASSERT_EQ(future.load_rom(clock_rom(false)), "");
+    const BatterySaver future_saver(future, path("game.sav"), log, [] { return kSavedAt - 100; });
+    EXPECT_EQ(future.clock()->live(), (Registers{1, 2, 3, 4, 0}));
+}
+
+TEST_F(SaveFile, AClockWithNoRamIsSavedAndSurvivesQuitAndRelaunch) {
+    std::int64_t now = kSavedAt;
+    const auto unix_now = [&now] { return now; };
+    {
+        core::GameBoy gb;
+        ASSERT_EQ(gb.load_rom(clock_rom(false)), "");
+        std::ostringstream log;
+        BatterySaver saver(gb, path("game.sav"), log, unix_now);
+        EXPECT_TRUE(saver.active());
+        gb.run_for(3 * core::GameBoy::kTicksPerSecond);
+        saver.flush();  // the clock moved, so the exit writes even with no RAM change
+    }
+    const auto saved = read_file(path("game.sav"));
+    ASSERT_EQ(saved.size(), 48U);
+    EXPECT_EQ(saved[0], 3);  // live seconds
+    EXPECT_EQ(frontend::decode_clock_footer(saved).value_or(ClockFooter{}).saved_at, kSavedAt);
+
+    now = kSavedAt + 10;  // closed for ten seconds
+    core::GameBoy gb;
+    ASSERT_EQ(gb.load_rom(clock_rom(false)), "");
+    std::ostringstream log;
+    const BatterySaver saver(gb, path("game.sav"), log, unix_now);
+    EXPECT_EQ(gb.clock()->live()[0], 13);
+}
+
+TEST_F(SaveFile, SaverNeverOverwritesAClockSaveOfTheWrongSize) {
+    const std::vector<std::uint8_t> ram_only(kRamSize, 0x55);  // no footer
+    write_file(path("game.sav"), ram_only);
+    core::GameBoy gb;
+    ASSERT_EQ(gb.load_rom(clock_rom(true)), "");
+    std::ostringstream log;
+    BatterySaver saver(gb, path("game.sav"), log, [] { return kSavedAt; });
+    EXPECT_FALSE(saver.active());
+    gb.run_for(1000);
+    saver.flush();
+    EXPECT_EQ(read_file(path("game.sav")), ram_only);
 }
 
 }  // namespace

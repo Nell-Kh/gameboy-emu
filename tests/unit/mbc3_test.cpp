@@ -144,7 +144,8 @@ TEST(Mbc3, EachClockRegisterHasItsOwnSelect) {
         cart.write_rom(kSelect, select);
         cart.write_ram(0xA000, select);
     }
-    EXPECT_EQ(cart.rtc().live(), (core::Rtc::Registers{0x08, 0x09, 0x0A, 0x0B, 0x00}));
+    ASSERT_NE(cart.clock(), nullptr);
+    EXPECT_EQ(cart.clock()->live(), (core::Rtc::Registers{0x08, 0x09, 0x0A, 0x0B, 0x00}));
     cart.write_rom(kSelect, 0x0B);
     EXPECT_EQ(cart.read_ram(0xBFFF), 0x0B);  // the whole window maps the register
 }
@@ -171,12 +172,22 @@ TEST(Mbc3, WithAClockTheRamAndUnusedSelectsAreUnchanged) {
     EXPECT_EQ(cart.read_ram(0xA000), 0x77);
 }
 
-TEST(Mbc3, WithoutAClockTickDoesNothing) {
+TEST(Mbc3, WithoutATimerThereIsNoClock) {
     const auto rom = banked_rom(8);
     Mbc3 cart(rom, 0);
     cart.tick(10 * kSecond);
-    EXPECT_FALSE(cart.has_clock());
-    EXPECT_EQ(cart.rtc().live(), (core::Rtc::Registers{}));
+    EXPECT_EQ(cart.clock(), nullptr);
+}
+
+TEST(Mbc3, WritingAClockRegisterCountsAsAChangeButTickingDoesNot) {
+    const auto rom = banked_rom(8);
+    Mbc3 cart(rom, 0, true, true);
+    cart.tick(5 * kSecond);
+    EXPECT_FALSE(cart.ram_changed());
+    cart.write_rom(kEnable, 0x0A);
+    cart.write_rom(kSelect, 0x0A);  // hours
+    cart.write_ram(0xA000, 12);
+    EXPECT_TRUE(cart.ram_changed());
 }
 
 }  // namespace

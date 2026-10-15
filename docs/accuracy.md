@@ -56,6 +56,7 @@ Blargg's timing ROMs, from the same repository:
 | `if_ie_registers` | IF and IE behaviour, including the unused bits | Passed |
 | `interrupts/ie_push` | dispatch cancelled when pushing PC overwrites IE | Passed |
 | `oam_dma/basic`, `oam_dma/reg_read` | OAM DMA copies 160 bytes; its register reads back | Passed |
+| `oam_dma/sources-GS` | OAM DMA from every source area, including cartridge RAM (needs MBC5) | Passed |
 | `oam_dma_start`, `oam_dma_timing` | the cycle OAM becomes blocked and the cycle it is free again | Passed |
 | `oam_dma_restart` | starting a new DMA while one runs | Passed |
 | `call_timing`, `call_timing2`, `call_cc_timing`, `call_cc_timing2` | in which cycle CALL reads and writes, timed with OAM DMA | Passed |
@@ -70,6 +71,7 @@ Blargg's timing ROMs, from the same repository:
 | `emulator-only/mbc1/bits_bank1`, `bits_bank2`, `bits_mode`, `bits_ramg` | which bits of each MBC1 register count | Passed |
 | `emulator-only/mbc1/rom_512kb` to `rom_16Mb` (6 ROMs) | ROM banking at every MBC1 ROM size | Passed |
 | `emulator-only/mbc1/ram_64kb`, `ram_256kb` | RAM banking and enabling | Passed |
+| `emulator-only/mbc5/rom_512kb` to `rom_64Mb` (8 ROMs) | MBC5 ROM banking at every size: bank numbers 0-255, bank 0 mappable at `4000`, bits 1-7 of the bank-bit-8 register ignored | Passed |
 | `ppu/intr_2_0_timing`, `intr_2_mode0_timing`, `intr_2_mode3_timing` | mode 2, 3 and 0 boundaries, through STAT interrupts and the mode bits | Passed |
 | `ppu/intr_2_oam_ok_timing` | the dot OAM becomes readable after mode 2 | Passed |
 | `ppu/intr_1_2_timing-GS` | from the mode 1 STAT interrupt to the next mode 2 | Passed |
@@ -113,11 +115,11 @@ provide.
 
 ## Not yet tested in CI
 
-- `oam_dma/sources-GS`: passes its OAM DMA checks in a hand run with a permissive loader, but the
-  ROM declares an MBC5 cartridge, which is M4. Until then the loader rejects it.
 - `emulator-only/mbc1/multicart_rom_8Mb`: MBC1 multicarts (MBC1M) wire the bank register
   differently and are not supported.
-- The `emulator-only/mbc2` and `mbc5` tests (M4).
+- The `emulator-only/mbc2` tests: MBC2 is not supported.
+- MBC5 bank bit 8: the Mooneye `mbc5` ROMs never set it (they only check bank numbers 0-255), so
+  banks 256-511 are checked by unit tests only.
 - The other Mooneye acceptance tests in the same folders. All were run by hand; these do not pass:
   - `boot_div-dmgABCmgb` and `boot_hwio-dmgABCmgb`: the exact DIV phase and the I/O register values
     the boot ROM leaves behind are not modelled.
@@ -210,8 +212,10 @@ that is a bug in this document.
   the second cycle after the write to `0xFF46` until 160 cycles later, as the Mooneye tests check.
   Not modelled: on hardware the CPU also cannot use the bus the DMA is reading from (ROM, work RAM)
   and reads the DMA's byte instead. Here only OAM is blocked; everything else stays usable.
-- **Cartridges:** no mapper (types `0x00`, `0x08`, `0x09`) and MBC1 (`0x01`-`0x03`) are supported;
-  every other type is refused with a message. The file size must match the header. MBC1
+- **Cartridges:** no mapper (types `0x00`, `0x08`, `0x09`), MBC1 (`0x01`-`0x03`) and MBC5
+  (`0x19`-`0x1E`) are supported; every other type is refused with a message. On MBC5 cartridges
+  with a rumble motor (`0x1C`-`0x1E`) the motor bit is honoured (it no longer selects RAM) but no
+  rumble is produced. The file size must match the header. MBC1
   multicarts are not detected. Battery-backed RAM works but is lost when the program exits
   (`.sav` files are M4). The header checksum is not checked; the real boot ROM would refuse to
   start a cartridge with a bad one.

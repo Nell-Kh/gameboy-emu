@@ -51,8 +51,10 @@ Pan Docs, MBC5.
 - `0000-3FFF` is always bank 0. `4000-7FFF` shows the selected bank, and **bank 0 can be
   selected there** ("bank 0 is actually bank 0"), unlike MBC1 and MBC3.
 - The 9-bit bank number is masked to the ROM's bank count, so a 1 MiB ROM (64 banks) wraps every
-  64 banks. **(test)** The Mooneye `mbc5` ROMs check all 512 bank numbers against exactly this
-  wrap, and write `0x3000` with bits 1-7 set "to expose bugs", so those bits must be ignored.
+  64 banks. **(test)** The Mooneye `mbc5` ROMs check bank numbers 0-255 against exactly this
+  wrap. They write `0x3000` as `0xFE`, bits 1-7 set "to expose bugs" and bit 0 clear, so they
+  check that bits 1-7 are ignored but never set bit 8: an emulator that ignored bit 8 entirely
+  would still pass them. Bit 8 is covered by the unit tests in `tests/unit/mbc5_test.cpp`.
 - RAM banks are masked to the RAM size. With no RAM, `A000-BFFF` reads `FF`.
 - **Rumble (`1C`-`1E`):** bit 3 of the RAM bank register drives the motor instead of selecting
   RAM, so only bits 0-2 select a bank. The motor itself is not emulated **(choice)**.

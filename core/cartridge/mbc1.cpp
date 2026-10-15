@@ -1,5 +1,7 @@
 #include "core/cartridge/mbc1.h"
 
+#include "core/cartridge/banking.h"
+
 namespace core {
 
 namespace {
@@ -13,13 +15,6 @@ constexpr std::uint8_t kRamEnableValue = 0x0A;
 constexpr std::uint8_t kBank1Mask = 0x1F;
 constexpr std::uint8_t kBank2Mask = 0x03;
 constexpr unsigned kBank2Shift = 5;
-
-// Banks wrap at the chip size, which is a power of two; a chip smaller than
-// one bank still counts as one.
-constexpr std::size_t bank_mask(std::size_t total_bytes, std::size_t bytes_per_bank) noexcept {
-    const std::size_t banks = total_bytes / bytes_per_bank;
-    return banks == 0 ? 0 : banks - 1;
-}
 
 }  // namespace
 

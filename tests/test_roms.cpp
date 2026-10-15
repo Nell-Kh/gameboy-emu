@@ -167,6 +167,7 @@ INSTANTIATE_TEST_SUITE_P(Interrupts, MooneyeRom,
 INSTANTIATE_TEST_SUITE_P(OamDma, MooneyeRom,
                          testing::Values(Rom{"basic", "acceptance/oam_dma/basic.gb"},
                                          Rom{"reg_read", "acceptance/oam_dma/reg_read.gb"},
+                                         Rom{"sources", "acceptance/oam_dma/sources-GS.gb"},
                                          Rom{"oam_dma_restart", "acceptance/oam_dma_restart.gb"},
                                          Rom{"oam_dma_start", "acceptance/oam_dma_start.gb"},
                                          Rom{"oam_dma_timing", "acceptance/oam_dma_timing.gb"}),
@@ -223,6 +224,21 @@ INSTANTIATE_TEST_SUITE_P(Mbc1, MooneyeRom,
                                          Rom{"rom_4Mb", "emulator-only/mbc1/rom_4Mb.gb"},
                                          Rom{"rom_8Mb", "emulator-only/mbc1/rom_8Mb.gb"},
                                          Rom{"rom_16Mb", "emulator-only/mbc1/rom_16Mb.gb"}),
+                         [](const testing::TestParamInfo<Rom>& info) {
+                             return std::string(info.param.test_name);
+                         });
+
+// MBC5 ROM banking at every size, including the 9th bank bit
+// (docs/cartridge-notes.md, section 2).
+INSTANTIATE_TEST_SUITE_P(Mbc5, MooneyeRom,
+                         testing::Values(Rom{"rom_512kb", "emulator-only/mbc5/rom_512kb.gb"},
+                                         Rom{"rom_1Mb", "emulator-only/mbc5/rom_1Mb.gb"},
+                                         Rom{"rom_2Mb", "emulator-only/mbc5/rom_2Mb.gb"},
+                                         Rom{"rom_4Mb", "emulator-only/mbc5/rom_4Mb.gb"},
+                                         Rom{"rom_8Mb", "emulator-only/mbc5/rom_8Mb.gb"},
+                                         Rom{"rom_16Mb", "emulator-only/mbc5/rom_16Mb.gb"},
+                                         Rom{"rom_32Mb", "emulator-only/mbc5/rom_32Mb.gb"},
+                                         Rom{"rom_64Mb", "emulator-only/mbc5/rom_64Mb.gb"}),
                          [](const testing::TestParamInfo<Rom>& info) {
                              return std::string(info.param.test_name);
                          });

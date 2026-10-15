@@ -76,6 +76,21 @@ TEST(MakeCartridge, Mbc1IsAccepted) {
     }
 }
 
+TEST(MakeCartridge, Mbc5IsAccepted) {
+    for (const std::uint8_t type : {0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E}) {
+        const auto result = make_cartridge(make_image(0x10000, type, 0x01, 0x03));
+        EXPECT_NE(result.cartridge, nullptr) << "type " << int{type} << ": " << result.error;
+    }
+}
+
+TEST(MakeCartridge, Mbc5MapsBank0High) {
+    const auto rom = make_image(0x10000, 0x19, 0x01, 0x00);
+    const auto result = make_cartridge(rom);
+    ASSERT_NE(result.cartridge, nullptr) << result.error;
+    result.cartridge->write_rom(0x2000, 0x00);
+    EXPECT_EQ(result.cartridge->read_rom(0x4000), 0);  // on MBC1 this would be bank 1
+}
+
 TEST(MakeCartridge, TooSmallFileIsRejected) {
     const std::vector<std::uint8_t> tiny(0x100, 0x00);
     const auto result = make_cartridge(tiny);

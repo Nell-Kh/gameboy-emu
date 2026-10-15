@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include "core/cartridge/mbc1.h"
+#include "core/cartridge/mbc5.h"
 #include "core/cartridge/no_mbc.h"
 
 namespace core {
@@ -29,7 +30,7 @@ std::string hex_byte(std::uint8_t value) {
     return std::string("0x") + kDigits[value >> 4U] + kDigits[value & 0x0FU];
 }
 
-enum class Mapper : std::uint8_t { None, Mbc1, Unsupported };
+enum class Mapper : std::uint8_t { None, Mbc1, Mbc5, Mbc5Rumble, Unsupported };
 
 Mapper mapper_for(std::uint8_t type) {
     switch (type) {
@@ -41,6 +42,14 @@ Mapper mapper_for(std::uint8_t type) {
         case 0x02:  // MBC1 + RAM
         case 0x03:  // MBC1 + RAM + battery
             return Mapper::Mbc1;
+        case 0x19:  // MBC5
+        case 0x1A:  // MBC5 + RAM
+        case 0x1B:  // MBC5 + RAM + battery
+            return Mapper::Mbc5;
+        case 0x1C:  // MBC5 + rumble
+        case 0x1D:  // MBC5 + rumble + RAM
+        case 0x1E:  // MBC5 + rumble + RAM + battery
+            return Mapper::Mbc5Rumble;
         default:
             return Mapper::Unsupported;
     }
@@ -87,6 +96,10 @@ CartridgeOrError make_cartridge(std::span<const std::uint8_t> rom) {
             return {std::make_unique<NoMbc>(rom, header.ram_size), ""};
         case Mapper::Mbc1:
             return {std::make_unique<Mbc1>(rom, header.ram_size), ""};
+        case Mapper::Mbc5:
+            return {std::make_unique<Mbc5>(rom, header.ram_size, false), ""};
+        case Mapper::Mbc5Rumble:
+            return {std::make_unique<Mbc5>(rom, header.ram_size, true), ""};
         case Mapper::Unsupported:
             break;
     }

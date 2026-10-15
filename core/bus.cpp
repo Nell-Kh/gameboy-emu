@@ -238,6 +238,9 @@ void Bus::tick(std::uint32_t t_cycles) noexcept {
     if (serial_.tick(t_cycles)) {
         request_interrupt(Interrupt::Serial);
     }
+    if (cartridge_) {
+        cartridge_->tick(t_cycles);
+    }
 }
 
 void Bus::set_button(Joypad::Button button, bool pressed) noexcept {

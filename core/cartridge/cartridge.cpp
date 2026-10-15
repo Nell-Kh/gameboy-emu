@@ -32,13 +32,15 @@ std::string hex_byte(std::uint8_t value) {
     return std::string("0x") + kDigits[value >> 4U] + kDigits[value & 0x0FU];
 }
 
-enum class Mapper : std::uint8_t { None, Mbc1, Mbc3, Mbc5, Mbc5Rumble, Unsupported };
+enum class Mapper : std::uint8_t { None, Mbc1, Mbc3, Mbc3Timer, Mbc5, Mbc5Rumble, Unsupported };
 
 // Whether the cartridge type has a battery to keep its RAM (header 0x0147).
 bool has_battery(std::uint8_t type) {
     switch (type) {
         case 0x03:  // MBC1 + RAM + battery
         case 0x09:  // ROM + RAM + battery
+        case 0x0F:  // MBC3 + timer + battery
+        case 0x10:  // MBC3 + timer + RAM + battery
         case 0x13:  // MBC3 + RAM + battery
         case 0x1B:  // MBC5 + RAM + battery
         case 0x1E:  // MBC5 + rumble + RAM + battery
@@ -58,6 +60,9 @@ Mapper mapper_for(std::uint8_t type) {
         case 0x02:  // MBC1 + RAM
         case 0x03:  // MBC1 + RAM + battery
             return Mapper::Mbc1;
+        case 0x0F:  // MBC3 + timer + battery
+        case 0x10:  // MBC3 + timer + RAM + battery
+            return Mapper::Mbc3Timer;
         case 0x11:  // MBC3
         case 0x12:  // MBC3 + RAM
         case 0x13:  // MBC3 + RAM + battery
@@ -162,6 +167,8 @@ CartridgeOrError make_cartridge(std::span<const std::uint8_t> rom) {
             return {std::make_unique<Mbc1>(rom, header.ram_size, battery), ""};
         case Mapper::Mbc3:
             return {std::make_unique<Mbc3>(rom, header.ram_size, battery), ""};
+        case Mapper::Mbc3Timer:
+            return {std::make_unique<Mbc3>(rom, header.ram_size, battery, true), ""};
         case Mapper::Mbc5:
             return {std::make_unique<Mbc5>(rom, header.ram_size, false, battery), ""};
         case Mapper::Mbc5Rumble:

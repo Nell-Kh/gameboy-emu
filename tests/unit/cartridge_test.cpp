@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "core/cartridge/no_mbc.h"
+#include "core/cartridge/rtc.h"
 
 namespace {
 
@@ -84,6 +85,23 @@ TEST(MakeCartridge, Mbc3IsAccepted) {
     const auto battery = make_cartridge(make_image(0x10000, 0x13, 0x01, 0x03));
     ASSERT_NE(battery.cartridge, nullptr);
     EXPECT_TRUE(battery.cartridge->has_battery());
+}
+
+TEST(MakeCartridge, Mbc3WithATimerIsAccepted) {
+    const auto timer = make_cartridge(make_image(0x8000, 0x0F, 0x00, 0x00));
+    ASSERT_NE(timer.cartridge, nullptr) << timer.error;
+    const auto timer_ram = make_cartridge(make_image(0x8000, 0x10, 0x00, 0x03));
+    ASSERT_NE(timer_ram.cartridge, nullptr) << timer_ram.error;
+    EXPECT_TRUE(timer_ram.cartridge->has_battery());
+
+    // The clock is there: after an emulated second, a latched read gives 1.
+    auto& cart = *timer.cartridge;
+    cart.write_rom(0x0000, 0x0A);
+    cart.write_rom(0x4000, 0x08);
+    cart.tick(core::Rtc::kTicksPerSecond);
+    cart.write_rom(0x6000, 0x00);
+    cart.write_rom(0x6000, 0x01);
+    EXPECT_EQ(cart.read_ram(0xA000), 1);
 }
 
 TEST(MakeCartridge, Mbc5IsAccepted) {

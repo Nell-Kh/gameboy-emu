@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "core/cartridge/cartridge.h"
+#include "core/cartridge/rtc.h"
 
 namespace core {
 
@@ -21,34 +22,50 @@ namespace core {
 // The ROM bank register is 7 bits wide, as on MBC3, for ROMs of up to 2 MiB.
 // For larger ROMs it is 8 bits wide, as on MBC30 (the Japanese Pokemon
 // Crystal's chip, which uses the same header types): mbc3-tester, a 4 MiB
-// type 0x11 ROM, expects all 256 banks. Bank numbers wrap at the real ROM and
-// RAM sizes. The clock comes with the timer types (0x0F, 0x10); this class
-// maps the RAM only, so a clock register select reads 0xFF.
+// type 0x11 ROM, expects all 256 banks (ADR-022). Bank numbers wrap at the
+// real ROM and RAM sizes.
+//
+// The timer types (0x0F, 0x10) have the real-time clock (rtc.h); without it, a
+// clock register select reads 0xFF and ignores writes.
 class Mbc3 final : public Cartridge {
 public:
-    Mbc3(std::span<const std::uint8_t> rom, std::size_t ram_size, bool battery = false);
+    Mbc3(std::span<const std::uint8_t> rom, std::size_t ram_size, bool battery = false,
+         bool clock = false);
 
     [[nodiscard]] std::uint8_t read_rom(std::uint16_t address) const noexcept override;
     void write_rom(std::uint16_t address, std::uint8_t value) noexcept override;
     [[nodiscard]] std::uint8_t read_ram(std::uint16_t address) const noexcept override;
     void write_ram(std::uint16_t address, std::uint8_t value) noexcept override;
+    void tick(std::uint32_t t_cycles) noexcept override;
 
     // The banks currently mapped, for tests and the debugger.
     [[nodiscard]] std::size_t rom_bank() const noexcept;  // at 0x4000-0x7FFF
     [[nodiscard]] std::size_t ram_bank() const noexcept;
 
+    [[nodiscard]] bool has_clock() const noexcept {
+        return clock_;
+    }
+    [[nodiscard]] const Rtc& rtc() const noexcept {
+        return rtc_;
+    }
+
 private:
     [[nodiscard]] bool ram_selected() const noexcept;
+    [[nodiscard]] bool clock_selected() const noexcept;
+    [[nodiscard]] Rtc::Register clock_register() const noexcept;
     [[nodiscard]] std::size_t ram_offset(std::uint16_t address) const noexcept;
 
     std::vector<std::uint8_t> rom_;
     std::size_t rom_bank_mask_;
     std::size_t ram_bank_mask_;
     std::uint8_t rom_bank_bits_;  // 0x7F (MBC3) or 0xFF (MBC30)
+    bool clock_;
+    Rtc rtc_;
 
     bool enabled_ = false;
     std::uint8_t rom_bank_ = 0x01;
     std::uint8_t select_ = 0x00;  // RAM bank or clock register
+    bool latch_armed_ = false;    // the last write to 0x6000-0x7FFF was 0x00
 };
 
 }  // namespace core

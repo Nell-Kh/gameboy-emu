@@ -30,6 +30,7 @@ add_executable(unit_tests
   unit/ppu_render_test.cpp
   unit/ppu_test.cpp
   unit/registers_test.cpp
+  unit/rtc_test.cpp
   unit/save_file_test.cpp
   unit/serial_test.cpp
   unit/smoke_test.cpp

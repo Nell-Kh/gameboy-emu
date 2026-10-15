@@ -16,15 +16,18 @@ constexpr std::size_t kMbc3MaxRom = 0x200000;  // 2 MiB: beyond it, the MBC30's 
 constexpr std::uint8_t kMbc3RomBankBits = 0x7F;
 constexpr std::uint8_t kMbc30RomBankBits = 0xFF;
 constexpr std::uint8_t kLastRamBank = 0x07;
+constexpr std::uint8_t kFirstClockRegister = 0x08;
+constexpr std::uint8_t kLastClockRegister = 0x0C;
 
 }  // namespace
 
-Mbc3::Mbc3(std::span<const std::uint8_t> rom, std::size_t ram_size, bool battery)
+Mbc3::Mbc3(std::span<const std::uint8_t> rom, std::size_t ram_size, bool battery, bool clock)
     : Cartridge(ram_size, battery),
       rom_(rom.begin(), rom.end()),
       rom_bank_mask_(bank_mask(rom_.size(), kRomBankSize)),
       ram_bank_mask_(bank_mask(ram_size, kRamBankSize)),
-      rom_bank_bits_(rom_.size() > kMbc3MaxRom ? kMbc30RomBankBits : kMbc3RomBankBits) {}
+      rom_bank_bits_(rom_.size() > kMbc3MaxRom ? kMbc30RomBankBits : kMbc3RomBankBits),
+      clock_(clock) {}
 
 std::size_t Mbc3::rom_bank() const noexcept {
     return rom_bank_ & rom_bank_mask_;
@@ -54,9 +57,27 @@ void Mbc3::write_rom(std::uint16_t address, std::uint8_t value) noexcept {
         case 2:  // 0x4000-0x5FFF
             select_ = value;
             break;
-        default:  // 0x6000-0x7FFF: the clock latch, with the timer types
+        default:  // 0x6000-0x7FFF: writing 0x00 then 0x01 latches the clock
+            if (clock_ && latch_armed_ && value == 0x01) {
+                rtc_.latch();
+            }
+            latch_armed_ = value == 0x00;
             break;
     }
+}
+
+void Mbc3::tick(std::uint32_t t_cycles) noexcept {
+    if (clock_) {
+        rtc_.tick(t_cycles);
+    }
+}
+
+bool Mbc3::clock_selected() const noexcept {
+    return enabled_ && clock_ && select_ >= kFirstClockRegister && select_ <= kLastClockRegister;
+}
+
+Rtc::Register Mbc3::clock_register() const noexcept {
+    return static_cast<Rtc::Register>(select_ - kFirstClockRegister);
 }
 
 bool Mbc3::ram_selected() const noexcept {
@@ -70,11 +91,16 @@ std::size_t Mbc3::ram_offset(std::uint16_t address) const noexcept {
 }
 
 std::uint8_t Mbc3::read_ram(std::uint16_t address) const noexcept {
+    if (clock_selected()) {
+        return rtc_.read(clock_register());
+    }
     return ram_selected() ? ram_at(ram_offset(address)) : kOpenBus;
 }
 
 void Mbc3::write_ram(std::uint16_t address, std::uint8_t value) noexcept {
-    if (ram_selected()) {
+    if (clock_selected()) {
+        rtc_.write(clock_register(), value);
+    } else if (ram_selected()) {
         set_ram_at(ram_offset(address), value);
     }
 }

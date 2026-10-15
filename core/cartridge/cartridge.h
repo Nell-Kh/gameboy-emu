@@ -31,6 +31,10 @@ public:
     [[nodiscard]] virtual std::uint8_t read_ram(std::uint16_t address) const noexcept = 0;
     virtual void write_ram(std::uint16_t address, std::uint8_t value) noexcept = 0;
 
+    // Called by the bus with the clock ticks that have passed, like the timer.
+    // Only a cartridge with its own clock (MBC3 + timer) does anything with it.
+    virtual void tick(std::uint32_t /*t_cycles*/) noexcept {}
+
     // Battery-backed RAM, which the frontend keeps in a save file
     // (docs/cartridge-notes.md, section 6). The core never touches files.
     //

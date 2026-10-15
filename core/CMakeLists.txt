@@ -6,6 +6,7 @@ add_library(core STATIC
   cartridge/mbc3.cpp
   cartridge/mbc5.cpp
   cartridge/no_mbc.cpp
+  cartridge/rtc.cpp
   cpu.cpp
   gameboy.cpp
   joypad.cpp

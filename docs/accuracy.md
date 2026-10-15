@@ -89,12 +89,18 @@ Blargg's timing ROMs, from the same repository:
 [dmg-acid2](https://github.com/mattcurrie/dmg-acid2) by Matt Currie, from the same c-sp
 collection. When the ROM reaches `LD B, B`, the frame is compared with `dmg-acid2-dmg.png` in
 shades 0-3. `mbc3-tester`, from the same collection, never stops; its frame is compared with
-`mbc3-tester-dmg.png` after 60 frames (c-sp's notes say the result is final after 40):
+`mbc3-tester-dmg.png` after 60 frames (c-sp's notes say the result is final after 40).
+`rtc3test` has three subtests picked on a menu; each test presses the buttons from c-sp's how-to
+(held 5 frames, 20 frames apart, from frame 60), runs for the subtest's time plus 2 emulated
+seconds, and compares the screen with its reference:
 
 | ROM | What it covers | Result |
 |---|---|---|
 | `dmg-acid2` | background, window and its line counter, objects, flips, 8x16 objects, object priority, the 10-objects-per-line limit, tile addressing modes | Pixel-identical |
 | `mbc3-tester` | MBC3 ROM banking: all 256 banks of a 4 MiB ROM (the MBC30's 8-bit bank register, ADR-022) | Pixel-identical |
+| `rtc3test` basic tests (A) | the clock starts, ticks every 1000 ms (±1 ms), stops while halted, reads back writes, rolls over into day 256, sets and keeps the day carry | Pixel-identical |
+| `rtc3test` range tests (Down, A) | which bits of each clock register exist; invalid seconds, minutes and hours count on and wrap without a carry | Pixel-identical |
+| `rtc3test` sub-second writes (Down, Down, A) | writing the seconds restarts the second in progress, writing the other registers does not, and halting pauses it (±1.5 ms) | Pixel-identical |
 
 To reproduce one by hand:
 
@@ -102,10 +108,9 @@ To reproduce one by hand:
 ./build/release/app/gameboy-emu --headless path/to/01-special.gb
 ```
 
-These two ROMs have no pass or fail verdict of their own; they are checked by the
-`DmgAcid2.FrameMatchesTheReference` and `Mbc3Tester.AllBanksAreTickedOff` tests in `rom_tests`,
-which on a mismatch save the frame as `<reference>-actual.png` next to the reference and print the
-first differing pixel.
+These ROMs have no pass or fail verdict the emulator can read; they are checked by the
+`DmgAcid2`, `Mbc3Tester` and `Rtc3Test` tests in `rom_tests`, which on a mismatch save the frame
+as `<reference>-actual.png` next to the reference and print the first differing pixel.
 
 ## Games checked by hand
 
@@ -217,17 +222,20 @@ that is a bug in this document.
   the second cycle after the write to `0xFF46` until 160 cycles later, as the Mooneye tests check.
   Not modelled: on hardware the CPU also cannot use the bus the DMA is reading from (ROM, work RAM)
   and reads the DMA's byte instead. Here only OAM is blocked; everything else stays usable.
-- **Cartridges:** no mapper (types `0x00`, `0x08`, `0x09`), MBC1 (`0x01`-`0x03`), MBC3 without
-  the clock (`0x11`-`0x13`) and MBC5 (`0x19`-`0x1E`) are supported; every other type, including
-  MBC3 with the clock (`0x0F`, `0x10`) for now, is refused with a message. On MBC3 ROMs over
-  2 MiB the ROM bank register is 8 bits wide, as on the MBC30 (ADR-022); the clock registers
-  (`08`-`0C`) read `0xFF` until the clock is added. On MBC5 cartridges
-  with a rumble motor (`0x1C`-`0x1E`) the motor bit is honoured (it no longer selects RAM) but no
-  rumble is produced. The file size must match the header. MBC1
-  multicarts are not detected. Battery-backed RAM is kept in `game.sav` next to the ROM by the
-  window (never in headless mode): written on exit, on SIGINT / SIGTERM, and at most once a
-  second while it changes; a save file of the wrong size is neither loaded nor overwritten. The header checksum is not checked; the real boot ROM would refuse to
-  start a cartridge with a bad one.
+- **Cartridges:** no mapper (types `0x00`, `0x08`, `0x09`), MBC1 (`0x01`-`0x03`), MBC3
+  (`0x0F`-`0x13`) and MBC5 (`0x19`-`0x1E`) are supported; every other type is refused with a
+  message. On MBC3 ROMs over 2 MiB the ROM bank register is 8 bits wide, as on the MBC30
+  (ADR-022). On MBC5 cartridges with a rumble motor (`0x1C`-`0x1E`) the motor bit is honoured (it
+  no longer selects RAM) but no rumble is produced. The file size must match the header. MBC1
+  multicarts are not detected. The header checksum is not checked; the real boot ROM would refuse
+  to start a cartridge with a bad one.
+- **Battery saves:** battery-backed RAM is kept in `game.sav` next to the ROM by the window (never
+  in headless mode): written on exit, on SIGINT / SIGTERM, and at most once a second while it
+  changes; a save file of the wrong size is neither loaded nor overwritten.
+- **MBC3 clock** (types `0x0F`, `0x10`): counts emulated time, not the wall clock (ADR-018), so
+  it falls behind real time whenever emulation runs slower than real time. It starts at day 0,
+  00:00:00 and running; on hardware the registers start with whatever the chip held. The clock
+  is not yet kept in the save file, so it restarts from zero each time the ROM is loaded.
 - **I/O registers:** joypad, serial, timer, interrupt and all LCD registers (`FF40`-`FF4B`) are
   emulated. Addresses with no register read `0xFF`. The sound registers are plain memory whose
   unused and write-only bits read as 1. They start at 0, not at their post-boot values, and have

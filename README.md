@@ -33,6 +33,10 @@ cmake --build --preset asan
 ctest --preset asan
 ```
 
+Configuring with `-DGB_APP_SMOKE_TESTS=ON` adds two tests, `ctest -L app_smoke`, that start the
+window with SDL's dummy drivers and check that a save is written on SIGTERM and SIGINT; they
+need Python 3.
+
 The first configure downloads GoogleTest and the public test ROMs. No ROM, commercial or
 otherwise, is stored in this repository. The tests read PNG screenshots with
 [stb_image](https://github.com/nothings/stb), kept in `tests/third_party/` (ADR-015).

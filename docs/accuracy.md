@@ -2,7 +2,9 @@
 
 What has been checked against real-hardware test ROMs, and what is known to be simplified.
 Everything in the tables under "Test ROMs that pass" runs in CI on every push (gcc and clang on Linux, clang on macOS,
-with AddressSanitizer and UndefinedBehaviorSanitizer).
+with AddressSanitizer and UndefinedBehaviorSanitizer). The window itself runs in CI only with
+SDL's dummy drivers, in one job that checks the save file is written when the app gets SIGTERM
+or SIGINT (ADR-021); everything else about the real window is checked by hand.
 
 ## Test ROMs that pass
 

@@ -253,3 +253,30 @@ record that supersedes the old one, not by editing history.
 - **Consequences:** Quit-and-relaunch is tested in the core with no files (a program counts its
   boots across two `GameBoy`s); the file code is tested separately. A `.sav` moves between
   emulators that use the same raw format.
+
+## ADR-020: Save states are a versioned, checksummed, field-by-field file
+
+- **Status:** Accepted in review (`docs/cartridge-notes.md`, section 7); lands with save states.
+- **Decision:** A 48-byte header (8-byte magic, format version, ROM checksums and title, CRC-32 of
+  the payload, reserved bytes that must be zero), then tagged sections written field by field,
+  little-endian, never a `memcpy` of a struct. A file with another version, another ROM, a bad
+  CRC, non-zero reserved bytes or a broken section is refused with the reason.
+- **Consequences:** States are portable between compilers and machines and never half-load. Any
+  layout change bumps the version, and old states stop loading.
+
+## ADR-021: CI starts the window only through SDL's dummy drivers
+
+- **Status:** Accepted; amends ADR-004.
+- **Context:** Writing the save on SIGINT and SIGTERM (ADR-019) is window code, and CI had never
+  started the window.
+- **Decision:** One more CI job, "app smoke", on Linux only: it builds the app with
+  `GB_APP_SMOKE_TESTS=ON` and runs `ctest -L app_smoke` with `SDL_VIDEODRIVER=dummy` and
+  `SDL_AUDIODRIVER=dummy`, so no real window or audio device is opened. The three existing jobs
+  are unchanged and keep testing the core headless. The tests (`tests/app_smoke.py`) start the
+  window on a generated ROM, send SIGTERM or SIGINT, and check the exit status and every byte of
+  the save file.
+- **Consequences:** Start-up, the frame loop, the battery saver and quitting on a signal run in
+  CI. Real-window behaviour (vsync, scaling, keyboard input, audio) stays a by-hand check. The
+  test relies on timing (the signal comes 0.5 s after the first save, before the next periodic
+  write could), so it needs the emulator to run at about a third of real speed or better; it was
+  stable in repeated runs with every CPU core busy.

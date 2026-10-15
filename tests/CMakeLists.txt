@@ -122,3 +122,23 @@ add_test(NAME App.RejectsAScaleOutOfRange COMMAND gameboy-emu --scale 0 no-such-
 set_tests_properties(App.RejectsAScaleOutOfRange PROPERTIES
   PASS_REGULAR_EXPRESSION "--scale must be 1 to 16"
 )
+
+# App smoke tests: the real window code, run with SDL's dummy video and audio
+# drivers so no window opens. Only the "app smoke" CI job turns these on; the
+# other jobs test the core headless (ADR-021).
+if(GB_APP_SMOKE_TESTS)
+  if(NOT Python3_Interpreter_FOUND)
+    message(FATAL_ERROR "GB_APP_SMOKE_TESTS needs Python 3")
+  endif()
+  foreach(signal TERM INT)
+    add_test(
+      NAME AppSmoke.SaveIsWrittenOnSig${signal}
+      COMMAND Python3::Interpreter ${CMAKE_CURRENT_SOURCE_DIR}/app_smoke.py
+              $<TARGET_FILE:gameboy-emu> ${signal}
+    )
+    set_tests_properties(AppSmoke.SaveIsWrittenOnSig${signal} PROPERTIES
+      LABELS app_smoke
+      TIMEOUT 15
+    )
+  endforeach()
+endif()

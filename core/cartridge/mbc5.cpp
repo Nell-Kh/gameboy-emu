@@ -1,6 +1,7 @@
 #include "core/cartridge/mbc5.h"
 
 #include "core/cartridge/banking.h"
+#include "core/state_io.h"
 
 namespace core {
 
@@ -71,6 +72,19 @@ void Mbc5::write_ram(std::uint16_t address, std::uint8_t value) noexcept {
     if (ram_accessible()) {
         set_ram_at(ram_offset(address), value);
     }
+}
+
+void Mbc5::save_registers(StateWriter& out) const {
+    out.boolean(ram_enabled_);
+    out.u16(rom_bank_);
+    out.u8(ram_bank_);
+}
+
+void Mbc5::load_registers(StateReader& in) {
+    constexpr std::uint32_t kLastRomBank = 0x1FF;
+    ram_enabled_ = in.boolean();
+    rom_bank_ = static_cast<std::uint16_t>(in.at_most(std::uint32_t{in.u16()}, kLastRomBank));
+    ram_bank_ = in.at_most(in.u8(), ram_bank_bits_);
 }
 
 }  // namespace core

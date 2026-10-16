@@ -1,5 +1,7 @@
 #include "core/serial.h"
 
+#include "core/state_io.h"
+
 namespace core {
 
 namespace {
@@ -50,6 +52,18 @@ bool Serial::tick(std::uint32_t t_cycles) noexcept {
 
 const std::string& Serial::output() const noexcept {
     return output_;
+}
+
+void Serial::save_state(StateWriter& out) const {
+    out.u8(data_);
+    out.u8(control_);
+    out.u32(ticks_left_);
+}
+
+void Serial::load_state(StateReader& in) {
+    data_ = in.u8();
+    control_ = in.u8();
+    ticks_left_ = in.at_most(in.u32(), kTicksPerTransfer);
 }
 
 }  // namespace core

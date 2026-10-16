@@ -269,7 +269,18 @@ Then sections, each a 4-byte ASCII tag, a 32-bit length and the payload, in this
 | `DMA ` | the FF46 value (1); requested, starting, active: each a presence byte and its value (1+1, 1+1, 1+2) | 8 |
 | `JOYP` | select bits (1); pressed buttons (1) | 2 |
 | `PPU ` | VRAM (8192); OAM (160); LCDC, STAT select bits, SCY, SCX, LYC, BGP, OBP0, OBP1, WY, WX (1 each); line, dot, mode-3 length (4 each); mode (1); first line, window Y reached (1 each); window line (4); LYC = LY, STAT line high (1 each); this line's objects (10) and their count (1); frames completed (8); the frame buffer (23040) | 31442 |
-| `CART` | mapper registers, then RAM, then for MBC3 + timer the clock; the exact layout per mapper is listed when each mapper is written | varies |
+| `CART` | mapper registers, then RAM, then for MBC3 + timer the clock (layouts below) | varies |
+
+`CART` per mapper:
+
+| Mapper | Registers | Then |
+|---|---|---|
+| none | (none) | RAM |
+| MBC1 | RAM enabled, bank 1, bank 2, mode (1 each) | RAM |
+| MBC3 | RAM and clock enabled, ROM bank, RAM bank or clock select, latch armed (1 each) | RAM; with a timer, the live S, M, H, DL, DH (5), the latched copy (5) and the clock ticks into the current second (4) |
+| MBC5 | RAM enabled (1), ROM bank (2), RAM bank (1) | RAM |
+
+A unit test checks every section's length against these tables.
 
 Left out on purpose: the serial output text (a test aid, not hardware), the per-line background
 index buffer (rebuilt at the start of every line), and the ROM itself.
@@ -281,7 +292,12 @@ own version; converting old states can come later if it is ever needed.
 frame and the CPU registers; load the state, run the same M frames with the same input, and
 require an identical frame, registers and tick count. Run with Libbet's demo and with a Blargg
 ROM. A second test saves, loads into a fresh `GameBoy`, saves again, and requires the two files
-to be byte-identical.
+to be byte-identical. **As built:** Libbet is built by hand and is not in the CI test-ROM
+collection, so rtc3test played through its menu is the input-driven ROM (input, the clock and
+screen updates); Blargg's `cpu_instrs` is the other. Both tests also compare every byte of the
+two machines' states. A third test saves at 40 points between instructions in two Mooneye ROMs
+that keep OAM DMA and the PPU busy, and requires a fresh `GameBoy` loaded from each state to run
+the next 3000 instructions identically.
 
 ## 8. Targets
 

@@ -5,6 +5,9 @@
 
 namespace core {
 
+class StateReader;
+class StateWriter;
+
 // The MBC3 real-time clock (Pan Docs, MBC3; docs/cartridge-notes.md, sections
 // 4 and 5). It counts emulated time, 4,194,304 clock ticks per second, never
 // the wall clock (ADR-018).
@@ -66,6 +69,11 @@ public:
     // does not move, invalid values count on and wrap as when ticking, and
     // passing day 511 sets the carry bit. The second in progress is kept.
     void advance_seconds(std::uint64_t seconds) noexcept;
+
+    // Save states: the live registers, the latched copy, then the clock
+    // ticks into the current second.
+    void save_state(StateWriter& out) const;
+    void load_state(StateReader& in);
 
 private:
     void step_second() noexcept;

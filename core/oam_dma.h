@@ -5,6 +5,9 @@
 
 namespace core {
 
+class StateReader;
+class StateWriter;
+
 // OAM DMA: a hardware copy of 160 bytes from XX00-XX9F into the sprite table
 // (OAM, 0xFE00-0xFE9F), started by writing XX to 0xFF46.
 //
@@ -20,6 +23,11 @@ namespace core {
 // one keeps running, and OAM stays blocked, until the new one takes over.
 class OamDma {
 public:
+    // Save states (core/state_io.h): this part's fields, in the order of
+    // the section table in docs/cartridge-notes.md, section 7.
+    void save_state(StateWriter& out) const;
+    void load_state(StateReader& in);
+
     static constexpr std::uint16_t kRegister = 0xFF46;
     static constexpr std::uint16_t kLength = 0xA0;
 

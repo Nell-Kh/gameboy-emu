@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "core/cartridge/no_mbc.h"
+#include "core/state_io.h"
 
 namespace core {
 
@@ -300,6 +301,84 @@ std::uint64_t Bus::frames_completed() const noexcept {
 
 const std::string& Bus::serial_output() const noexcept {
     return serial_.output();
+}
+
+namespace {
+
+constexpr std::uint16_t kWorkRamStart = 0xC000;
+constexpr std::size_t kWorkRamSize = 0x2000;
+constexpr std::size_t kIoSize = 0x80;
+constexpr std::uint16_t kHighRamStart = 0xFF80;
+constexpr std::size_t kHighRamSize = 0x7F;
+
+}  // namespace
+
+void Bus::save_state(StateWriter& out) const {
+    const std::span<const std::uint8_t> memory(memory_);
+    out.begin_section("BUS ");
+    out.bytes(memory.subspan(kWorkRamStart, kWorkRamSize));
+    out.bytes(memory.subspan(kIoStart, kIoSize));
+    out.bytes(memory.subspan(kHighRamStart, kHighRamSize));
+    out.u8(interrupt_flag_);
+    out.u8(interrupt_enable_);
+    out.u64(cycles_);
+    out.u32(dma_ticks_);
+    out.end_section();
+
+    out.begin_section("TIMR");
+    timer_.save_state(out);
+    out.end_section();
+    out.begin_section("SERL");
+    serial_.save_state(out);
+    out.end_section();
+    out.begin_section("DMA ");
+    dma_.save_state(out);
+    out.end_section();
+    out.begin_section("JOYP");
+    joypad_.save_state(out);
+    out.end_section();
+    out.begin_section("PPU ");
+    ppu_.save_state(out);
+    out.end_section();
+    out.begin_section("CART");
+    if (cartridge_) {
+        cartridge_->save_state(out);
+    }
+    out.end_section();
+}
+
+void Bus::load_state(StateReader& in) {
+    const std::span<std::uint8_t> memory(memory_);
+    in.begin_section("BUS ");
+    in.bytes(memory.subspan(kWorkRamStart, kWorkRamSize));
+    in.bytes(memory.subspan(kIoStart, kIoSize));
+    in.bytes(memory.subspan(kHighRamStart, kHighRamSize));
+    interrupt_flag_ = in.u8() & kInterruptBits;
+    interrupt_enable_ = in.u8();
+    cycles_ = in.u64();
+    dma_ticks_ = in.at_most(in.u32(), kTicksPerMachineCycle - 1);
+    in.end_section();
+
+    in.begin_section("TIMR");
+    timer_.load_state(in);
+    in.end_section();
+    in.begin_section("SERL");
+    serial_.load_state(in);
+    in.end_section();
+    in.begin_section("DMA ");
+    dma_.load_state(in);
+    in.end_section();
+    in.begin_section("JOYP");
+    joypad_.load_state(in);
+    in.end_section();
+    in.begin_section("PPU ");
+    ppu_.load_state(in);
+    in.end_section();
+    in.begin_section("CART");
+    if (cartridge_) {
+        cartridge_->load_state(in);
+    }
+    in.end_section();
 }
 
 }  // namespace core

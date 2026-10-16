@@ -1,5 +1,7 @@
 #include "core/oam_dma.h"
 
+#include "core/state_io.h"
+
 namespace core {
 
 std::uint8_t OamDma::read() const noexcept {
@@ -37,6 +39,26 @@ std::optional<std::uint16_t> OamDma::step() noexcept {
 
 bool OamDma::oam_blocked() const noexcept {
     return active_.has_value();
+}
+
+void OamDma::save_state(StateWriter& out) const {
+    out.u8(register_);
+    out.optional_u8(requested_);
+    out.optional_u8(starting_);
+    out.optional_u16(active_);
+}
+
+void OamDma::load_state(StateReader& in) {
+    constexpr std::uint16_t kLowByte = 0xFF;
+    register_ = in.u8();
+    requested_ = in.optional_u8();
+    starting_ = in.optional_u8();
+    active_ = in.optional_u16();
+    // A running transfer is between its first byte and one past its last.
+    if (active_ && (*active_ & kLowByte) > kLength) {
+        in.fail("a value in section DMA  is out of range");
+        active_.reset();
+    }
 }
 
 }  // namespace core

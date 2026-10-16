@@ -1,6 +1,7 @@
 #include "core/cartridge/mbc1.h"
 
 #include "core/cartridge/banking.h"
+#include "core/state_io.h"
 
 namespace core {
 
@@ -82,6 +83,20 @@ void Mbc1::write_ram(std::uint16_t address, std::uint8_t value) noexcept {
     if (ram_accessible()) {
         set_ram_at(ram_offset(address), value);
     }
+}
+
+void Mbc1::save_registers(StateWriter& out) const {
+    out.boolean(ram_enabled_);
+    out.u8(bank1_);
+    out.u8(bank2_);
+    out.boolean(mode1_);
+}
+
+void Mbc1::load_registers(StateReader& in) {
+    ram_enabled_ = in.boolean();
+    bank1_ = in.at_most(in.u8(), kBank1Mask);
+    bank2_ = in.at_most(in.u8(), kBank2Mask);
+    mode1_ = in.boolean();
 }
 
 }  // namespace core

@@ -258,13 +258,19 @@ record that supersedes the old one, not by editing history.
 
 ## ADR-020: Save states are a versioned, checksummed, field-by-field file
 
-- **Status:** Accepted in review (`docs/cartridge-notes.md`, section 7); lands with save states.
+- **Status:** Accepted in review (`docs/cartridge-notes.md`, section 7). The format and its
+  tests are in the core (`core/state_io.h`, `core/save_state.cpp`).
 - **Decision:** A 48-byte header (8-byte magic, format version, ROM checksums and title, CRC-32 of
   the payload, reserved bytes that must be zero), then tagged sections written field by field,
   little-endian, never a `memcpy` of a struct. A file with another version, another ROM, a bad
   CRC, non-zero reserved bytes or a broken section is refused with the reason.
 - **Consequences:** States are portable between compilers and machines and never half-load. Any
-  layout change bumps the version, and old states stop loading.
+  layout change bumps the version, and old states stop loading. A crafted file with a matching
+  CRC can still hold a value a field does not allow (a PPU mode of 4, say); every such field is
+  range-checked on load, and if one fails the machine is put back from a copy taken just
+  before, so a refused file changes nothing. Omitting a field from both save and load would
+  still round-trip byte for byte, so the tests check behaviour too: determinism runs on real
+  ROMs, per-mapper register tests, and section lengths against the documented tables.
 
 ## ADR-021: CI starts the window only through SDL's dummy drivers
 

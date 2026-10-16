@@ -40,6 +40,10 @@ public:
     [[nodiscard]] std::size_t rom_bank_high() const noexcept;  // at 0x4000-0x7FFF
     [[nodiscard]] std::size_t ram_bank() const noexcept;
 
+protected:
+    void save_registers(StateWriter& out) const override;
+    void load_registers(StateReader& in) override;
+
 private:
     [[nodiscard]] bool ram_accessible() const noexcept;
     [[nodiscard]] std::size_t ram_offset(std::uint16_t address) const noexcept;

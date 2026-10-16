@@ -1,15 +1,21 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "core/bus.h"
 #include "core/cartridge/rtc.h"
 #include "core/cpu.h"
 
 namespace core {
+
+class StateReader;
+class StateWriter;
 
 // The whole machine. Owns the bus (memory, timer, serial port) and the CPU,
 // and is the one class a frontend or a test needs to talk to.
@@ -82,12 +88,34 @@ public:
     // Everything the program has sent over the serial port so far.
     [[nodiscard]] const std::string& serial_output() const noexcept;
 
+    // Save states (ADR-020; docs/cartridge-notes.md, section 7): the whole
+    // machine as a file's bytes, a 48-byte header and then the sections.
+    static constexpr std::size_t kStateHeaderSize = 48;
+    static constexpr std::uint32_t kStateVersion = 1;
+    [[nodiscard]] std::vector<std::uint8_t> save_state() const;
+    // Loads a state made by save_state() for the same ROM. Returns an empty
+    // string, or the reason the file was refused; a refused file leaves the
+    // machine exactly as it was.
+    [[nodiscard]] std::string load_state(std::span<const std::uint8_t> state);
+
     [[nodiscard]] const Cpu& cpu() const noexcept;
     [[nodiscard]] const Bus& bus() const noexcept;
 
 private:
+    // Writes the sections after the header; reads them back.
+    void save_sections(StateWriter& out) const;
+    void load_sections(StateReader& in);
+
+    // What identifies the loaded ROM in a save state's header.
+    struct RomIdentity {
+        std::uint8_t header_checksum = 0;               // 0x014D
+        std::array<std::uint8_t, 2> global_checksum{};  // 0x014E-0x014F, as stored
+        std::array<std::uint8_t, 16> title{};           // zero-padded
+    };
+
     Bus bus_;
     Cpu cpu_{bus_};
+    RomIdentity rom_identity_;
 };
 
 }  // namespace core

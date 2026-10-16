@@ -6,6 +6,9 @@
 
 namespace core {
 
+class StateReader;
+class StateWriter;
+
 // The picture processing unit: video RAM, the sprite table (OAM), the LCD
 // registers, the per-dot mode state machine and the PPU interrupts.
 // docs/ppu-notes.md is the specification this follows.
@@ -18,6 +21,11 @@ namespace core {
 // 160x144 frame of shades: 0 is white, 3 is black.
 class Ppu {
 public:
+    // Save states (core/state_io.h): this part's fields, in the order of
+    // the section table in docs/cartridge-notes.md, section 7.
+    void save_state(StateWriter& out) const;
+    void load_state(StateReader& in);
+
     enum class Mode : std::uint8_t { HBlank = 0, VBlank = 1, OamScan = 2, Drawing = 3 };
 
     static constexpr std::uint16_t kLcdc = 0xFF40;

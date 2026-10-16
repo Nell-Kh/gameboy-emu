@@ -7,6 +7,9 @@
 
 namespace core {
 
+class StateReader;
+class StateWriter;
+
 // The Sharp SM83 CPU.
 //
 // Timing model (ADR-005): one machine cycle is 4 clock ticks (T-cycles), and
@@ -18,6 +21,11 @@ namespace core {
 // opcode table by tools/gen_opcodes.py. Everything else is hand-written.
 class Cpu {
 public:
+    // Save states (core/state_io.h): this part's fields, in the order of
+    // the section table in docs/cartridge-notes.md, section 7.
+    void save_state(StateWriter& out) const;
+    void load_state(StateReader& in);
+
     static constexpr std::uint32_t kTicksPerMachineCycle = 4;
 
     explicit Cpu(Bus& bus) noexcept;

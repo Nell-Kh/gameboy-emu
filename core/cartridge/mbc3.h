@@ -45,6 +45,12 @@ public:
     [[nodiscard]] Rtc* clock() noexcept override;
     [[nodiscard]] const Rtc* clock() const noexcept override;
 
+protected:
+    void save_registers(StateWriter& out) const override;
+    void load_registers(StateReader& in) override;
+    void save_clock(StateWriter& out) const override;
+    void load_clock(StateReader& in) override;
+
 private:
     [[nodiscard]] bool ram_selected() const noexcept;
     [[nodiscard]] bool clock_selected() const noexcept;

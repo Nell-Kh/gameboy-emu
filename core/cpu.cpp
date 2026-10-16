@@ -2,6 +2,8 @@
 
 #include <bit>
 
+#include "core/state_io.h"
+
 namespace core {
 
 namespace {
@@ -517,6 +519,38 @@ void Cpu::ei() noexcept {
     if (ime_ == Ime::Disabled) {
         ime_ = Ime::Pending;
     }
+}
+
+void Cpu::save_state(StateWriter& out) const {
+    for (const std::uint8_t r : {reg_.a, reg_.f, reg_.b, reg_.c, reg_.d, reg_.e, reg_.h, reg_.l}) {
+        out.u8(r);
+    }
+    out.u16(reg_.sp);
+    out.u16(reg_.pc);
+    out.u8(static_cast<std::uint8_t>(ime_));
+    out.boolean(halted_);
+    out.boolean(stopped_);
+    out.boolean(locked_);
+    out.boolean(repeat_next_byte_);
+}
+
+void Cpu::load_state(StateReader& in) {
+    constexpr std::uint8_t kFlagBits = 0xF0;
+    reg_.a = in.u8();
+    reg_.f = in.u8() & kFlagBits;
+    reg_.b = in.u8();
+    reg_.c = in.u8();
+    reg_.d = in.u8();
+    reg_.e = in.u8();
+    reg_.h = in.u8();
+    reg_.l = in.u8();
+    reg_.sp = in.u16();
+    reg_.pc = in.u16();
+    ime_ = static_cast<Ime>(in.at_most(in.u8(), static_cast<std::uint8_t>(Ime::Enabled)));
+    halted_ = in.boolean();
+    stopped_ = in.boolean();
+    locked_ = in.boolean();
+    repeat_next_byte_ = in.boolean();
 }
 
 }  // namespace core

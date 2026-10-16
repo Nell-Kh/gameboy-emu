@@ -2,6 +2,8 @@
 
 #include <cstddef>
 
+#include "core/state_io.h"
+
 namespace core {
 
 namespace {
@@ -134,6 +136,22 @@ void Rtc::advance_seconds(std::uint64_t seconds) noexcept {
     if (day >= kDays) {
         high |= kCarryBit;
     }
+}
+
+void Rtc::save_state(StateWriter& out) const {
+    out.bytes(live_);
+    out.bytes(latched_);
+    out.u32(sub_second_);
+}
+
+void Rtc::load_state(StateReader& in) {
+    Registers live{};
+    Registers latched{};
+    in.bytes(live);
+    in.bytes(latched);
+    const std::uint32_t sub_second = in.at_most(in.u32(), kTicksPerSecond - 1);
+    restore(live, latched);
+    sub_second_ = sub_second;
 }
 
 }  // namespace core

@@ -4,11 +4,14 @@
 #include <array>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #include "core/cartridge/mbc1.h"
 #include "core/cartridge/mbc3.h"
 #include "core/cartridge/mbc5.h"
 #include "core/cartridge/no_mbc.h"
+#include "core/state_io.h"
 
 namespace core {
 
@@ -181,6 +184,23 @@ CartridgeOrError make_cartridge(std::span<const std::uint8_t> rom) {
             break;
     }
     return {nullptr, "cartridge type " + hex_byte(header.type) + " is not supported yet"};
+}
+
+void Cartridge::save_state(StateWriter& out) const {
+    save_registers(out);
+    out.bytes(ram_);
+    save_clock(out);
+}
+
+void Cartridge::load_state(StateReader& in) {
+    load_registers(in);
+    std::vector<std::uint8_t> ram(ram_.size());
+    in.bytes(ram);
+    if (in.ok() && ram != ram_) {
+        ram_ = std::move(ram);
+        ram_changed_ = true;
+    }
+    load_clock(in);
 }
 
 }  // namespace core

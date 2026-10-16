@@ -2,6 +2,8 @@
 
 #include <array>
 
+#include "core/state_io.h"
+
 namespace core {
 
 namespace {
@@ -119,6 +121,26 @@ bool Timer::tick_once() noexcept {
         increment_tima();
     }
     return interrupt;
+}
+
+void Timer::save_state(StateWriter& out) const {
+    out.u16(counter_);
+    out.u8(tima_);
+    out.u8(tma_);
+    out.u8(tac_);
+    out.u8(static_cast<std::uint8_t>(overflow_));
+    out.u8(overflow_ticks_left_);
+}
+
+void Timer::load_state(StateReader& in) {
+    constexpr std::uint8_t kTacBits = 0x07;
+    counter_ = in.u16();
+    tima_ = in.u8();
+    tma_ = in.u8();
+    tac_ = in.u8() & kTacBits;
+    overflow_ =
+        static_cast<Overflow>(in.at_most(in.u8(), static_cast<std::uint8_t>(Overflow::Reloaded)));
+    overflow_ticks_left_ = in.at_most(in.u8(), static_cast<std::uint8_t>(kTicksPerMachineCycle));
 }
 
 }  // namespace core

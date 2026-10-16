@@ -4,6 +4,9 @@
 
 namespace core {
 
+class StateReader;
+class StateWriter;
+
 // The joypad register P1 (0xFF00).
 //
 // The eight buttons are wired as two groups of four on the same four input
@@ -19,6 +22,11 @@ namespace core {
 // was selected.
 class Joypad {
 public:
+    // Save states (core/state_io.h): this part's fields, in the order of
+    // the section table in docs/cartridge-notes.md, section 7.
+    void save_state(StateWriter& out) const;
+    void load_state(StateReader& in);
+
     static constexpr std::uint16_t kRegister = 0xFF00;
 
     // The d-pad comes first, in the order of its input lines, then the buttons.

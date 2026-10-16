@@ -1,6 +1,7 @@
 #include "core/cartridge/mbc3.h"
 
 #include "core/cartridge/banking.h"
+#include "core/state_io.h"
 
 namespace core {
 
@@ -111,6 +112,35 @@ void Mbc3::write_ram(std::uint16_t address, std::uint8_t value) noexcept {
         mark_changed();
     } else if (ram_selected()) {
         set_ram_at(ram_offset(address), value);
+    }
+}
+
+void Mbc3::save_registers(StateWriter& out) const {
+    out.boolean(enabled_);
+    out.u8(rom_bank_);
+    out.u8(select_);
+    out.boolean(latch_armed_);
+}
+
+void Mbc3::load_registers(StateReader& in) {
+    enabled_ = in.boolean();
+    rom_bank_ = in.u8() & rom_bank_bits_;
+    if (rom_bank_ == 0) {
+        rom_bank_ = 1;
+    }
+    select_ = in.u8();
+    latch_armed_ = in.boolean();
+}
+
+void Mbc3::save_clock(StateWriter& out) const {
+    if (clock_) {
+        rtc_.save_state(out);
+    }
+}
+
+void Mbc3::load_clock(StateReader& in) {
+    if (clock_) {
+        rtc_.load_state(in);
     }
 }
 

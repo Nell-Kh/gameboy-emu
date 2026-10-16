@@ -32,6 +32,7 @@ add_executable(unit_tests
   unit/registers_test.cpp
   unit/rtc_test.cpp
   unit/save_file_test.cpp
+  unit/save_state_test.cpp
   unit/serial_test.cpp
   unit/smoke_test.cpp
   unit/timer_test.cpp
@@ -87,6 +88,7 @@ if(GB_FETCH_TEST_ROMS)
   add_executable(rom_tests
     acid2_test.cpp
     cartridge_screens_test.cpp
+    save_state_rom_test.cpp
     screenshot.cpp
     test_roms.cpp
   )

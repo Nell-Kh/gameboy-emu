@@ -4,6 +4,7 @@
 #include <cstddef>
 
 #include "core/interrupts.h"
+#include "core/state_io.h"
 
 namespace core {
 
@@ -487,6 +488,68 @@ std::uint8_t Ppu::ly() const noexcept {
 
 bool Ppu::lcd_enabled() const noexcept {
     return (lcdc_ & kLcdEnable) != 0;
+}
+
+void Ppu::save_state(StateWriter& out) const {
+    out.bytes(vram_);
+    out.bytes(oam_);
+    for (const std::uint8_t r :
+         {lcdc_, stat_select_, scy_, scx_, lyc_, bgp_, obp0_, obp1_, wy_, wx_}) {
+        out.u8(r);
+    }
+    out.u32(line_);
+    out.u32(dot_);
+    out.u32(drawing_dots_);
+    out.u8(static_cast<std::uint8_t>(mode_));
+    out.boolean(first_line_);
+    out.boolean(window_y_reached_);
+    out.u32(window_line_);
+    out.boolean(lyc_equal_);
+    out.boolean(stat_line_high_);
+    out.bytes(line_objects_);
+    out.u8(line_object_count_);
+    out.u64(frames_completed_);
+    out.bytes(frame_);
+}
+
+void Ppu::load_state(StateReader& in) {
+    constexpr std::uint8_t kStatSelectBits = 0x78;
+    constexpr std::uint32_t kLastLine = 153;
+    constexpr std::uint32_t kLastDot = 455;
+    constexpr std::uint32_t kLastWindowLine = 255;  // keeps the map row inside VRAM
+    constexpr std::uint8_t kLastObject = kOamSize / 4 - 1;
+    constexpr std::uint8_t kDarkest = 3;
+    in.bytes(vram_);
+    in.bytes(oam_);
+    lcdc_ = in.u8();
+    stat_select_ = in.u8() & kStatSelectBits;
+    scy_ = in.u8();
+    scx_ = in.u8();
+    lyc_ = in.u8();
+    bgp_ = in.u8();
+    obp0_ = in.u8();
+    obp1_ = in.u8();
+    wy_ = in.u8();
+    wx_ = in.u8();
+    line_ = in.at_most(in.u32(), kLastLine);
+    dot_ = in.at_most(in.u32(), kLastDot);
+    drawing_dots_ = in.at_most(in.u32(), kLastDot);
+    mode_ = static_cast<Mode>(in.at_most(in.u8(), static_cast<std::uint8_t>(Mode::Drawing)));
+    first_line_ = in.boolean();
+    window_y_reached_ = in.boolean();
+    window_line_ = in.at_most(in.u32(), kLastWindowLine);
+    lyc_equal_ = in.boolean();
+    stat_line_high_ = in.boolean();
+    in.bytes(line_objects_);
+    for (std::uint8_t& object : line_objects_) {
+        object = in.at_most(object, kLastObject);
+    }
+    line_object_count_ = in.at_most(in.u8(), kMaxObjectsPerLine);
+    frames_completed_ = in.u64();
+    in.bytes(frame_);
+    for (std::uint8_t& pixel : frame_) {
+        pixel = in.at_most(pixel, kDarkest);
+    }
 }
 
 }  // namespace core

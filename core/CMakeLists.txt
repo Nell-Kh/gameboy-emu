@@ -13,7 +13,9 @@ add_library(core STATIC
   oam_dma.cpp
   opcodes.gen.cpp
   ppu.cpp
+  save_state.cpp
   serial.cpp
+  state_io.cpp
   timer.cpp
 )
 add_library(gb::core ALIAS core)

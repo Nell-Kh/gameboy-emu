@@ -1,6 +1,7 @@
 #include "core/joypad.h"
 
 #include "core/interrupts.h"
+#include "core/state_io.h"
 
 namespace core {
 
@@ -51,6 +52,17 @@ std::uint8_t Joypad::lines() const noexcept {
 std::uint8_t Joypad::falling_edge(std::uint8_t before) const noexcept {
     const auto fell = static_cast<std::uint8_t>(before & ~lines() & kLineBits);
     return fell != 0 ? kJoypadBit : std::uint8_t{0};
+}
+
+void Joypad::save_state(StateWriter& out) const {
+    out.u8(select_);
+    out.u8(pressed_);
+}
+
+void Joypad::load_state(StateReader& in) {
+    constexpr std::uint8_t kSelectBits = 0x30;
+    select_ = in.u8() & kSelectBits;
+    pressed_ = in.u8();
 }
 
 }  // namespace core

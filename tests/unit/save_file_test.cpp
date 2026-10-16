@@ -409,6 +409,10 @@ TEST_F(SaveFile, AShort44ByteFooterIsReadAndTheNextSaveIs48Bytes) {
 // The file pairs the clock with the moment it was written, so a crash after a
 // write loses nothing: the catch-up from that write lands where a clean exit
 // would have left the clock (with the emulator running at real speed).
+//
+// This test has teeth: stamping the footer 3 seconds early in
+// BatterySaver::write() (`unix_now_() - 3`) makes it fail, because the
+// catch-up then over-advances by those 3 seconds.
 TEST_F(SaveFile, AfterACrashTheClockCatchesUpToWhereACleanExitWouldHaveLeftIt) {
     // MBC3 + timer + RAM + battery: writes one RAM byte, then loops.
     auto rom = test::make_rom({

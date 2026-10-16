@@ -5,6 +5,9 @@
 
 namespace core {
 
+class StateReader;
+class StateWriter;
+
 // The link-cable port: SB (0xFF01) holds the byte to send, SC (0xFF02) starts
 // and reports a transfer.
 //
@@ -13,6 +16,11 @@ namespace core {
 // report their result.
 class Serial {
 public:
+    // Save states (core/state_io.h): this part's fields, in the order of
+    // the section table in docs/cartridge-notes.md, section 7.
+    void save_state(StateWriter& out) const;
+    void load_state(StateReader& in);
+
     static constexpr std::uint16_t kData = 0xFF01;
     static constexpr std::uint16_t kControl = 0xFF02;
 

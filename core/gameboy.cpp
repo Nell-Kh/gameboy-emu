@@ -1,5 +1,7 @@
 #include "core/gameboy.h"
 
+#include <algorithm>
+#include <string>
 #include <utility>
 
 #include "core/cartridge/cartridge.h"
@@ -14,6 +16,13 @@ std::string GameBoy::load_rom(std::span<const std::uint8_t> rom) {
     CartridgeOrError result = make_cartridge(rom);
     if (result.cartridge) {
         bus_.insert_cartridge(std::move(result.cartridge));
+        constexpr std::size_t kHeaderChecksum = 0x014D;
+        rom_identity_ = RomIdentity{};
+        rom_identity_.header_checksum = rom[kHeaderChecksum];
+        rom_identity_.global_checksum = {rom[kHeaderChecksum + 1], rom[kHeaderChecksum + 2]};
+        const std::string title = read_header(rom).title;
+        std::copy_n(title.begin(), std::min(title.size(), rom_identity_.title.size()),
+                    rom_identity_.title.begin());
     }
     return result.error;
 }

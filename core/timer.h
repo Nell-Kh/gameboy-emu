@@ -4,6 +4,9 @@
 
 namespace core {
 
+class StateReader;
+class StateWriter;
+
 // The hardware timer: four registers at 0xFF04-0xFF07.
 //
 //   DIV   the upper 8 bits of a 16-bit counter that goes up by one on every
@@ -19,6 +22,11 @@ namespace core {
 // example, resetting DIV can make TIMA count one extra step.
 class Timer {
 public:
+    // Save states (core/state_io.h): this part's fields, in the order of
+    // the section table in docs/cartridge-notes.md, section 7.
+    void save_state(StateWriter& out) const;
+    void load_state(StateReader& in);
+
     static constexpr std::uint16_t kDiv = 0xFF04;
     static constexpr std::uint16_t kTima = 0xFF05;
     static constexpr std::uint16_t kTma = 0xFF06;

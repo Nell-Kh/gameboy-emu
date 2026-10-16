@@ -17,6 +17,9 @@
 
 namespace core {
 
+class StateReader;
+class StateWriter;
+
 // Everything the CPU can address: 16-bit addresses, so 64 KiB.
 // The CPU never touches memory directly; every read and write goes through here
 // and is routed to whatever lives at that address.
@@ -43,6 +46,12 @@ public:
     // Inserts a cartridge, replacing any that was there. With none inserted,
     // the cartridge areas read 0xFF.
     void insert_cartridge(std::unique_ptr<Cartridge> cartridge) noexcept;
+
+    // Save states: the BUS section, then the sections of the parts the bus
+    // owns (TIMR, SERL, DMA, JOYP, PPU, CART), in the order of the table in
+    // docs/cartridge-notes.md, section 7.
+    void save_state(StateWriter& out) const;
+    void load_state(StateReader& in);
 
     // The inserted cartridge, or null.
     [[nodiscard]] Cartridge* cartridge() noexcept;

@@ -9,6 +9,9 @@
 
 namespace core {
 
+class StateReader;
+class StateWriter;
+
 class Rtc;
 
 // A cartridge as the bus sees it: 32 KiB of ROM address space at 0x0000-0x7FFF
@@ -62,6 +65,12 @@ public:
     [[nodiscard]] bool ram_changed() const noexcept;
     void clear_ram_changed() noexcept;
 
+    // Save states: the mapper's registers, then the RAM, then the clock if
+    // there is one. Loading RAM that differs from the current RAM counts as
+    // a change, so the battery save is brought up to date.
+    void save_state(StateWriter& out) const;
+    void load_state(StateReader& in);
+
 protected:
     Cartridge(std::size_t ram_size, bool battery);
 
@@ -71,6 +80,12 @@ protected:
     void set_ram_at(std::size_t offset, std::uint8_t value) noexcept;
     // For a write the battery keeps that is not a RAM byte.
     void mark_changed() noexcept;
+
+    // The mapper's own part of a save state, before and after the RAM.
+    virtual void save_registers(StateWriter& /*out*/) const {}
+    virtual void load_registers(StateReader& /*in*/) {}
+    virtual void save_clock(StateWriter& /*out*/) const {}
+    virtual void load_clock(StateReader& /*in*/) {}
 
 private:
     std::vector<std::uint8_t> ram_;

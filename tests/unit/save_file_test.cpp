@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <span>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -371,6 +372,85 @@ TEST_F(SaveFile, SaverNeverOverwritesAClockSaveOfTheWrongSize) {
     gb.run_for(1000);
     saver.flush();
     EXPECT_EQ(read_file(path("game.sav")), ram_only);
+}
+
+TEST_F(SaveFile, AShort44ByteFooterIsReadAndTheNextSaveIs48Bytes) {
+    std::vector<std::uint8_t> old(kRamSize + 44, 0x00);
+    old[0] = 0x77;            // RAM
+    old[kRamSize] = 20;       // live seconds
+    old[kRamSize + 20] = 21;  // latched seconds
+    const std::uint32_t saved_at = 1'700'000'000;
+    for (std::size_t i = 0; i < 4; ++i) {
+        old[kRamSize + 40 + i] = static_cast<std::uint8_t>(saved_at >> (8 * i));
+    }
+    write_file(path("game.sav"), old);
+    core::GameBoy gb;
+    ASSERT_EQ(gb.load_rom(clock_rom(true)), "");
+    std::ostringstream log;
+    BatterySaver saver(gb, path("game.sav"), log, [] { return kSavedAt; });
+    ASSERT_TRUE(saver.active());
+    EXPECT_EQ(gb.battery_ram()[0], 0x77);
+    EXPECT_EQ(gb.clock()->live()[0], 20);
+    EXPECT_EQ(gb.clock()->latched()[0], 21);
+    EXPECT_EQ(read_file(path("game.sav")), old);  // reading does not touch the file
+
+    saver.flush();
+    const auto saved = read_file(path("game.sav"));
+    ASSERT_EQ(saved.size(), kRamSize + 48);
+    const ClockFooter footer =
+        frontend::decode_clock_footer(std::span<const std::uint8_t>(saved).subspan(kRamSize))
+            .value_or(ClockFooter{});
+    EXPECT_EQ(saved[0], 0x77);
+    EXPECT_EQ(footer.live[0], 20);
+    EXPECT_EQ(footer.latched[0], 21);
+    EXPECT_EQ(footer.saved_at, kSavedAt);
+}
+
+// The file pairs the clock with the moment it was written, so a crash after a
+// write loses nothing: the catch-up from that write lands where a clean exit
+// would have left the clock (with the emulator running at real speed).
+TEST_F(SaveFile, AfterACrashTheClockCatchesUpToWhereACleanExitWouldHaveLeftIt) {
+    // MBC3 + timer + RAM + battery: writes one RAM byte, then loops.
+    auto rom = test::make_rom({
+        0x3E, 0x0A,        // LD A, 0x0A
+        0xEA, 0x00, 0x00,  // LD [0x0000], A   ; enable RAM
+        0x3E, 0x01,        // LD A, 1
+        0xEA, 0x00, 0xA0,  // LD [0xA000], A
+        0x18, 0xFE,        // JR -2
+    });
+    rom[0x0147] = 0x10;
+    rom[0x0149] = 0x02;
+    std::int64_t now = kSavedAt;
+    const auto unix_now = [&now] { return now; };
+    constexpr std::uint64_t kRunSeconds = 5;
+    constexpr std::int64_t kClosedSeconds = 50;
+
+    Registers at_crash{};
+    {
+        core::GameBoy gb;
+        ASSERT_EQ(gb.load_rom(rom), "");
+        std::ostringstream log;
+        BatterySaver saver(gb, path("game.sav"), log, unix_now);
+        gb.run_for(1000);                        // the RAM write
+        saver.tick(BatterySaver::Clock::now());  // the last save before the crash
+        ASSERT_TRUE(fs::exists(path("game.sav")));
+        gb.run_for(kRunSeconds * core::GameBoy::kTicksPerSecond);
+        now += static_cast<std::int64_t>(kRunSeconds);
+        at_crash = gb.clock()->live();
+        // No flush: the process dies here.
+    }
+    ASSERT_GE(at_crash[0], kRunSeconds);  // the clock ran on after the last save
+
+    now += kClosedSeconds;
+    core::Rtc clean_exit;  // where a clean exit at the crash would have led
+    clean_exit.restore(at_crash, at_crash);
+    clean_exit.advance_seconds(kClosedSeconds);
+
+    core::GameBoy gb;
+    ASSERT_EQ(gb.load_rom(rom), "");
+    std::ostringstream log;
+    const BatterySaver saver(gb, path("game.sav"), log, unix_now);
+    EXPECT_EQ(gb.clock()->live(), clean_exit.live());
 }
 
 }  // namespace

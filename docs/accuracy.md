@@ -224,16 +224,18 @@ that is a bug in this document.
   and reads the DMA's byte instead. Here only OAM is blocked; everything else stays usable.
 - **Cartridges:** no mapper (types `0x00`, `0x08`, `0x09`), MBC1 (`0x01`-`0x03`), MBC3
   (`0x0F`-`0x13`) and MBC5 (`0x19`-`0x1E`) are supported; every other type is refused with a
-  message. On MBC3 ROMs over 2 MiB the ROM bank register is 8 bits wide, as on the MBC30
-  (ADR-022). On MBC5 cartridges with a rumble motor (`0x1C`-`0x1E`) the motor bit is honoured (it
+  message. The header cannot tell MBC3 from MBC30 (Japanese Pokémon Crystal), so the ROM size
+  decides (ADR-022): over 2 MiB the ROM bank register is 8 bits wide, as on the MBC30, and up to
+  2 MiB it is 7 bits, as on MBC3. On MBC5 cartridges with a rumble motor (`0x1C`-`0x1E`) the motor bit is honoured (it
   no longer selects RAM) but no rumble is produced. The file size must match the header. MBC1
   multicarts are not detected. The header checksum is not checked; the real boot ROM would refuse
   to start a cartridge with a bad one.
 - **Battery saves:** battery-backed RAM is kept in `game.sav` next to the ROM by the window (never
   in headless mode): written on exit, on SIGINT / SIGTERM, and at most once a second while the
   program changes it; a save file of the wrong size is neither loaded nor overwritten. For MBC3
-  with a timer, BGB's 48-byte clock footer follows the RAM (the 44-byte form is also read), so
-  the file is RAM + 48 bytes, or 48 bytes with no RAM.
+  with a timer, BGB's 48-byte clock footer follows the RAM, so the file is RAM + 48 bytes, or 48
+  bytes with no RAM. Old VBA's 44-byte form (32-bit time) is read too, but every write is 48
+  bytes.
 - **MBC3 clock** (types `0x0F`, `0x10`): counts emulated time, not the wall clock (ADR-018), so
   it falls behind real time whenever emulation runs slower than real time. With no save file it
   starts at day 0, 00:00:00 and running; on hardware the registers start with whatever the chip
@@ -241,8 +243,11 @@ that is a bug in this document.
   halted or the saved time is in the future; passing day 511 sets the carry), matching
   second-by-second ticking. The footer has no room for the fraction of a second, so the second
   in progress restarts at load. The clock is always written on exit, but during play only when
-  the program changes RAM or a clock register; after a crash, the catch-up from the last write
-  still brings it forward to real time.
+  the program changes RAM or a clock register. Each write pairs the clock with the time it was
+  written, so after a crash or power loss the catch-up from the last write brings the clock to
+  where a clean exit would have (a unit test checks this). The one difference: a clean exit
+  saves the clock as emulated, so time the emulator ran slower than real time is lost, while
+  after a crash that time is made up, and the clock comes back closer to real time.
 - **I/O registers:** joypad, serial, timer, interrupt and all LCD registers (`FF40`-`FF4B`) are
   emulated. Addresses with no register read `0xFF`. The sound registers are plain memory whose
   unused and write-only bits read as 1. They start at 0, not at their post-boot values, and have

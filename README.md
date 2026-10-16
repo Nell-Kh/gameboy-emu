@@ -13,12 +13,12 @@ ffmpeg.*
 Libbet and the Magic Floor runs; see [docs/accuracy.md](docs/accuracy.md) for what is verified.
 
 **Status:** CPU, timing, memory and MBC1 complete (`v0.2.0`). M3 complete (`v0.3.0`): the PPU draws
-the background, window and objects, and ROMs run in an SDL window with keyboard input. Blargg's
-`cpu_instrs`, `instr_timing` and `mem_timing`, 81 Mooneye tests, and dmg-acid2, mbc3-tester and
-the three rtc3test subtests (pixel-identical) pass in CI. M4, cartridges and saves, is in progress:
-MBC5 and MBC3 with its clock are in, and battery saves are kept in `game.sav`. There is no sound
-yet, and cartridges with no mapper, MBC1, MBC3 or MBC5 load; see [docs/accuracy.md](docs/accuracy.md)
-for exactly what is and is not covered.
+the background, window and objects, and ROMs run in an SDL window with keyboard input. M4 complete
+(`v0.4.0`): MBC3 with its real-time clock and MBC5, battery saves in `game.sav`, and save states
+on F5 / F8. Blargg's `cpu_instrs`, `instr_timing` and `mem_timing`, 81 Mooneye tests, and
+dmg-acid2, mbc3-tester and the three rtc3test subtests (pixel-identical) pass in CI. There is no
+sound yet, and cartridges with no mapper, MBC1, MBC3 or MBC5 load; see
+[docs/accuracy.md](docs/accuracy.md) for exactly what is and is not covered.
 
 ## Build and test
 
@@ -55,10 +55,15 @@ otherwise, is stored in this repository. The tests read PNG screenshots with
 | B | Z |
 | Start | Enter |
 | Select | Backspace |
+| Save state | F5 |
+| Load state | F8 |
 
 Escape closes the window. `--scale N` sets the window size to N times 160x144 (default 4); the
 window can also be resized. Games with battery saves keep them, and the cartridge clock if there
-is one, in a `.sav` file next to the ROM, written when the window closes and while you play. Bring your own ROM: none is included.
+is one, in a `.sav` file next to the ROM, written when the window closes and while you play. F5
+saves the whole machine to a `.state` file next to the ROM and F8 loads it back; there is one
+state per ROM, and a state in another format version or for another ROM is refused. Bring your
+own ROM: none is included.
 
 ## Run a test ROM
 

@@ -107,17 +107,22 @@ SaveRead read_save(const std::filesystem::path& path, std::size_t ram_size, bool
 
 std::string write_save(const std::filesystem::path& path, std::span<const std::uint8_t> ram,
                        const ClockFooter* clock) {
+    std::vector<std::uint8_t> bytes(ram.begin(), ram.end());
+    if (clock != nullptr) {
+        const auto footer = encode_clock_footer(*clock);
+        bytes.insert(bytes.end(), footer.begin(), footer.end());
+    }
+    return write_file_atomically(path, bytes);
+}
+
+std::string write_file_atomically(const std::filesystem::path& path,
+                                  std::span<const std::uint8_t> bytes) {
     std::filesystem::path temporary = path;
     temporary += ".tmp";
     {
         std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
-        file.write(reinterpret_cast<const char*>(ram.data()),
-                   static_cast<std::streamsize>(ram.size()));
-        if (clock != nullptr) {
-            const auto footer = encode_clock_footer(*clock);
-            file.write(reinterpret_cast<const char*>(footer.data()),
-                       static_cast<std::streamsize>(footer.size()));
-        }
+        file.write(reinterpret_cast<const char*>(bytes.data()),
+                   static_cast<std::streamsize>(bytes.size()));
         if (!file) {
             return "cannot write " + temporary.string();
         }

@@ -16,6 +16,7 @@
 #include <optional>
 
 #include "app/dpad.h"
+#include "app/state_file.h"
 #include "core/joypad.h"
 
 namespace frontend {
@@ -66,6 +67,10 @@ private:
     bool ok_;
 };
 
+constexpr std::array<Button, 8> kButtons = {Button::Right,  Button::Left, Button::Up,
+                                            Button::Down,   Button::A,    Button::B,
+                                            Button::Select, Button::Start};
+
 // Arrows: d-pad. X: A. Z: B. Enter: Start. Backspace: Select.
 std::optional<Button> button_for(SDL_Keycode key) noexcept {
     switch (key) {
@@ -97,7 +102,8 @@ bool is_direction(Button button) noexcept {
 
 class Session {
 public:
-    explicit Session(core::GameBoy& gb) noexcept : gb_(gb) {}
+    Session(core::GameBoy& gb, const std::filesystem::path& state_path)
+        : gb_(gb), state_path_(state_path), slot_(gb, state_path, std::cerr) {}
 
     // Handles every waiting event. Returns false once the user asked to quit.
     bool handle_events() {
@@ -135,31 +141,51 @@ private:
         if (key.repeat != 0) {
             return true;
         }
+        if (down && !state_path_.empty() && key.keysym.sym == SDLK_F5) {
+            slot_.save();
+            return true;
+        }
+        if (down && !state_path_.empty() && key.keysym.sym == SDLK_F8) {
+            if (slot_.load()) {
+                // The state holds the buttons held when it was saved; the
+                // keys held now are what count.
+                apply_held();
+            }
+            return true;
+        }
         const std::optional<Button> button = button_for(key.keysym.sym);
         if (!button) {
             return true;
         }
         if (is_direction(*button)) {
             dpad_.set_held(*button, down);
-            for (const Button direction : Dpad::kDirections) {
-                gb_.set_button(direction, dpad_.pressed(direction));
-            }
         } else {
-            gb_.set_button(*button, down);
+            held_.at(static_cast<std::size_t>(*button)) = down;
         }
+        apply_held();
         return true;
+    }
+
+    // Tells the machine which buttons are pressed now.
+    void apply_held() {
+        for (const Button button : kButtons) {
+            gb_.set_button(button, is_direction(button)
+                                       ? dpad_.pressed(button)
+                                       : held_.at(static_cast<std::size_t>(button)));
+        }
     }
 
     void release_all() {
         dpad_ = Dpad{};
-        for (const Button button : {Button::Right, Button::Left, Button::Up, Button::Down,
-                                    Button::A, Button::B, Button::Select, Button::Start}) {
-            gb_.set_button(button, false);
-        }
+        held_ = {};
+        apply_held();
     }
 
     core::GameBoy& gb_;
+    std::filesystem::path state_path_;
+    StateSlot slot_;
     Dpad dpad_;
+    std::array<bool, kButtons.size()> held_{};  // A, B, Select, Start, by Button
 };
 
 }  // namespace
@@ -212,7 +238,7 @@ int run_window(core::GameBoy& gb, const WindowOptions& options, BatterySaver* sa
         counts_per_second * core::GameBoy::kTicksPerFrame / core::GameBoy::kTicksPerSecond;
     std::uint64_t next_frame = SDL_GetPerformanceCounter();
 
-    Session session(gb);
+    Session session(gb, options.state_path);
     std::array<std::uint32_t, static_cast<std::size_t>(kWidth) * kHeight> pixels{};
     while (session.handle_events()) {
         gb.run_frame();

@@ -33,6 +33,7 @@ add_executable(unit_tests
   unit/rtc_test.cpp
   unit/save_file_test.cpp
   unit/save_state_test.cpp
+  unit/state_file_test.cpp
   unit/serial_test.cpp
   unit/smoke_test.cpp
   unit/timer_test.cpp

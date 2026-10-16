@@ -5,6 +5,7 @@ find_package(SDL2 REQUIRED CONFIG)
 # Frontend code with no SDL in it, so the unit tests can link it too.
 add_library(frontend STATIC
   save_file.cpp
+  state_file.cpp
 )
 target_link_libraries(frontend PUBLIC gb::core PRIVATE gb_warnings)
 

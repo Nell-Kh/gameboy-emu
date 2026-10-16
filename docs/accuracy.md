@@ -257,6 +257,11 @@ that is a bug in this document.
 - **Frontend:** the window runs one whole frame at a time and paces itself to 59.73 frames per
   second (ADR-016). Input is read once per frame, so a key press reaches the game up to one frame
   later than on hardware.
+- **Save states:** one per ROM, `game.state` next to it, F5 to save and F8 to load (ADR-020).
+  A state stores everything the machine needs to continue identically (checked by the
+  determinism tests), but not the serial output text, which is a test aid. A load gives the game
+  the buttons held at that moment, not the ones held when the state was saved. A state from
+  another format version is refused; there is no conversion.
 - **Joypad:** a button press shows in `FF00` and requests the joypad interrupt the moment the
   frontend reports it. Not modelled: switch bounce, which on hardware can request the interrupt
   several times per press, and the few cycles a newly selected group takes to show. Opposite

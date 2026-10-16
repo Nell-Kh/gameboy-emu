@@ -258,8 +258,9 @@ record that supersedes the old one, not by editing history.
 
 ## ADR-020: Save states are a versioned, checksummed, field-by-field file
 
-- **Status:** Accepted in review (`docs/cartridge-notes.md`, section 7). The format and its
-  tests are in the core (`core/state_io.h`, `core/save_state.cpp`).
+- **Status:** Accepted in review (`docs/cartridge-notes.md`, section 7). Done: the format and its
+  tests in the core (`core/state_io.h`, `core/save_state.cpp`), F5 / F8 and `game.state` in the
+  window (`app/state_file.h`).
 - **Decision:** A 48-byte header (8-byte magic, format version, ROM checksums and title, CRC-32 of
   the payload, reserved bytes that must be zero), then tagged sections written field by field,
   little-endian, never a `memcpy` of a struct. A file with another version, another ROM, a bad

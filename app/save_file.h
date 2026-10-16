@@ -61,6 +61,12 @@ struct SaveRead {
 [[nodiscard]] SaveRead read_save(const std::filesystem::path& path, std::size_t ram_size,
                                  bool has_clock = false);
 
+// Writes `bytes` to `path` through `path` + ".tmp" and a rename, so a crash
+// mid-write leaves the old file whole. Returns an error message, or an empty
+// string on success. Used for battery saves and save states.
+[[nodiscard]] std::string write_file_atomically(const std::filesystem::path& path,
+                                                std::span<const std::uint8_t> bytes);
+
 // Writes `ram`, then the clock footer if there is one, to `path` through
 // `path` + ".tmp" and a rename, so a crash mid-write leaves the old file
 // whole. Returns an error message, or an empty string on success.

@@ -37,9 +37,11 @@ battery, with 8 KiB of RAM), checked by running them here:
 | `A001`-`A003` | the signature `DE B0 61`, so a random RAM byte is not read as a verdict |
 | `A004`- | the text the ROM also shows on screen, zero-terminated |
 
-**Plan:** the headless runner and `rom_tests` accept this as a second kind of verdict next to the
-serial one: once the signature is present and the status is not `80`, the run is over, the text
-is printed, and the exit status is 0 for `00` and 1 otherwise. The RAM is read straight from the
+**Plan (agreed in review):** the headless runner and `rom_tests` accept this as a second kind of
+verdict next to the serial one. The status byte is trusted only once the signature `DE B0 61` is
+present; then, if the status is not `80`, the run is over, the text is printed, and the exit
+status is 0 for `00` and 1 otherwise. This makes `--headless` useful for any Blargg ROM that
+reports this way, not just in CI. The RAM is read straight from the
 cartridge (a new `GameBoy::cartridge_ram()`), not through the bus, because a ROM may disable RAM
 after writing its result.
 
@@ -117,8 +119,10 @@ channel off. Two quirks the tests check **(test: `02-len ctr`, `03-trigger`)**:
 
 The tests above read registers and timing, not the sound itself. What comes out is checked by
 unit tests on each channel (duty patterns, the LFSR sequence, envelope steps, the sweep
-arithmetic) and by a tone test: a small program plays channel 1 at a known period, and counting
-zero crossings in one emulated second of output must give the expected frequency.
+arithmetic), by a tone test: a small program plays channel 1 at a known period, and counting
+zero crossings in one emulated second of output must give the expected frequency, and by an
+amplitude test: with every channel off the output is silent, and a DAC left on with nothing
+playing settles to 0 once the high-pass filter has removed its offset.
 
 ## 6. Wave RAM while the channel plays (the hard part)
 
@@ -127,8 +131,10 @@ channel is reading it: a read then returns the byte being played, and at any oth
 a write lands on that byte, and at any other moment is lost. Triggering channel 3 while it is
 already reading corrupts the first bytes of wave RAM **(test: `09-wave read while on`,
 `10-wave trigger while on`, `12-wave write while on`)**. These three need the wave channel's
-timing to the 2 MHz tick, measured against the CPU's own memory accesses. They are the riskiest
-part of M5 and are planned last (section 9).
+timing to the 2 MHz tick, measured against the CPU's own memory accesses. **In scope (agreed in
+review):** they are what tells an APU that is right from one that only sounds right. If they run
+past the weekend, the other nine land first and these three are documented with their first
+mismatch, and the decision is made then.
 
 ## 7. Sound out of the window
 
@@ -136,8 +142,9 @@ part of M5 and are planned last (section 9).
 **(choice)**, by averaging the analog level over each sample's clock ticks (a box filter), then a
 high-pass filter like the capacitor on the real output, so a DAC switched on or off does not
 leave a constant offset. Samples go into a buffer the frontend drains with
-`GameBoy::take_audio()`; the core stays free of I/O. Band-limited synthesis (as in `blip_buf`)
-would remove more aliasing on high notes; it is not planned for M5 **(choice)**.
+`GameBoy::take_audio()`; the core stays free of I/O. **Agreed in review:** aliasing on the square
+channels is accepted for M5; band-limited synthesis (as in `blip_buf`) is the planned upgrade for
+v1.1. Both go into the audio ADR.
 
 **In the window.** SDL's audio queue (`SDL_QueueAudio`). Two ways to keep sound and picture in
 step:
@@ -150,9 +157,12 @@ step:
    apart, so the queue slowly grows or empties; samples would have to be dropped or repeated, or
    the output rate nudged, to hold it.
 
-**Proposed: 1**, with the current wall-clock pacing kept for when no audio device opens, with
-`--mute`, and in the CI app-smoke job (SDL's dummy audio driver), so the save-on-signal tests
-are not changed by audio timing. If chosen, it becomes a new ADR that supersedes ADR-016.
+**Agreed in review: 1.** Audio is the only clock the user can hear drift against; correcting the
+queue under wall-clock pacing ends in crackle or pitch wobble. Target about 50 ms queued. The
+current wall-clock pacing stays for when no audio device opens, for `--mute`, and for the CI
+app-smoke job (SDL's dummy audio driver), so the save-on-signal tests are not changed by audio
+timing. The window counts underruns (the queue running dry) and reports the count on exit, so
+"no crackle" is measured, not just heard. This becomes a new ADR that supersedes ADR-016.
 
 ## 8. Save states
 
@@ -160,38 +170,45 @@ A new `APU ` section after `JOYP`: every register, the frame-sequencer step, and
 timers, length, envelope, sweep and LFSR state, written field by field like the rest (ADR-020).
 The output buffer and the high-pass filter's memory are left out, as the serial text is. Adding a
 section is a layout change, so the format version goes to 2 and `v0.4.0` states are refused with
-the reason, as ADR-020 says. The determinism tests also compare the samples produced after a
-load with those of the original run.
+the reason, as ADR-020 says, with no converter **(agreed in review)**; the v0.5.0 release notes
+say so. The determinism tests also compare the samples produced after a load with those of the
+original run.
 
 ## 9. Order of work and exit
 
-1. **Registers and power**: the `Apu` class with the register table, NR52 power, and the
-   `A000` verdict in the headless runner and `rom_tests`. Target: `01-registers`,
-   `11-regs after power`.
-2. **Frame sequencer and length**: `02-len ctr`, `03-trigger`, `07-len sweep period sync`,
-   `08-len ctr during power`.
-3. **Sweep**: `04-sweep`, `05-sweep details`, `06-overflow on trigger`.
-4. **The channels and the mix**, with their unit tests and the tone test.
-5. **Sound in the window**: SDL audio, the pacing chosen in review, `--mute`.
-6. **Wave RAM while playing**: `09`, `10`, `12`.
+The order set in review: the core APU is proven deterministic before any real-time code touches
+it, so pacing comes last.
+
+1. **Registers, power, frame sequencer, length, envelope and sweep**, with the `A000` verdict in
+   the headless runner and `rom_tests`. Targets: `01`-`08` and `11`.
+2. **Channels 1 and 2** (square), with their unit tests.
+3. **Channel 4** (noise), with its unit tests.
+4. **Channel 3** (wave) at the 2 MHz tick: `09`, `10`, `12`.
+5. **Mixer and output**: NR50/NR51, the box filter and high-pass, `GameBoy::take_audio()`, the
+   tone and amplitude tests.
+6. **Pacing**: SDL audio, the audio-paced loop and its ADR, `--mute`, the underrun counter.
 7. **Save states**: the `APU ` section, format version 2, samples in the determinism tests.
-8. The combined `dmg_sound` screenshot.
+8. **Tests and docs**: the combined `dmg_sound` screenshot, accuracy.md, v0.5.0.
 
 Each step is its own commit with its tests; accuracy.md is updated as it lands.
 
-**M5 exit (proposed):** all 12 `dmg_sound` single tests pass by their `A000` verdict and the
-combined ROM matches its screenshot, in CI; the tone test passes; the APU is in save states with
-the determinism tests covering sound; and by hand, Libbet's music plays in the window without
-crackling or drift over a few minutes.
+**M5 exit (agreed in review):** all 12 `dmg_sound` single tests pass by their `A000` verdict and
+the combined ROM matches its screenshot, in CI; the tone and amplitude tests pass; the APU is in
+save states with the determinism tests covering sound; and by hand, Libbet's music plays in the
+window for 5 minutes with the underrun counter at zero.
 
-## 10. Questions for review
+## 10. Decisions from review
 
-1. **Pacing:** audio sets the pace (section 7, option 1, superseding ADR-016), or keep the wall
-   clock and correct the queue?
-2. **Output quality:** is a box filter plus high-pass enough for M5, with band-limited synthesis
-   left for later?
-3. **Wave RAM quirks** (`09`, `10`, `12`): part of the M5 exit as proposed, or allowed as a
-   documented gap if they need more than a weekend?
-4. **Save-state version 2:** confirm that `v0.4.0` states are simply refused, with no converter.
-5. **The `A000` verdict** in the headless runner: acceptable as a second verdict source next to
-   serial output, or keep it in `rom_tests` only?
+1. **Pacing:** audio sets the pace, about 50 ms queued, with an underrun counter; wall-clock
+   pacing stays for `--mute`, no audio device and the app-smoke job. A new ADR supersedes
+   ADR-016 (section 7).
+2. **Output:** 48 kHz stereo, box filter plus high-pass is enough for M5. Aliasing on the square
+   channels is accepted; band-limited synthesis is the v1.1 upgrade. A tone test and an
+   amplitude test check the output (sections 5, 7).
+3. **Wave RAM quirks** (`09`, `10`, `12`) are in scope. If they run past the weekend, the other
+   nine land first and these are documented with their first mismatch; the decision is made
+   then, not in advance (section 6).
+4. **Save states:** format version 2; `v0.4.0` states are refused with the reason, no converter;
+   noted in the v0.5.0 release notes (section 8).
+5. **The `A000` verdict** is in the headless runner too, beside serial, and only after the
+   signature `DE B0 61` is found (section 2).

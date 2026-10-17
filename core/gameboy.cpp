@@ -46,6 +46,11 @@ const Rtc* GameBoy::clock() const noexcept {
     return cartridge != nullptr ? cartridge->clock() : nullptr;
 }
 
+std::span<const std::uint8_t> GameBoy::cartridge_ram() const noexcept {
+    const Cartridge* cartridge = bus_.cartridge();
+    return cartridge != nullptr ? cartridge->ram() : std::span<const std::uint8_t>{};
+}
+
 std::span<const std::uint8_t> GameBoy::battery_ram() const noexcept {
     const Cartridge* cartridge = bus_.cartridge();
     if (cartridge == nullptr || !cartridge->has_battery()) {

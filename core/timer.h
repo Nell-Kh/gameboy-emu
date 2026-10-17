@@ -28,6 +28,7 @@ public:
     void load_state(StateReader& in);
 
     static constexpr std::uint16_t kDiv = 0xFF04;
+    static constexpr std::uint16_t kFrameSequencerBit = 0x1000;
     static constexpr std::uint16_t kTima = 0xFF05;
     static constexpr std::uint16_t kTma = 0xFF06;
     static constexpr std::uint16_t kTac = 0xFF07;
@@ -38,6 +39,12 @@ public:
     // Advances the timer. Returns true if the timer interrupt was requested
     // during these ticks.
     [[nodiscard]] bool tick(std::uint32_t t_cycles) noexcept;
+
+    // DIV bit 4 (bit 12 of the counter). Its falling edge clocks the APU's
+    // frame sequencer, 512 times a second (docs/apu-notes.md, section 4).
+    [[nodiscard]] bool frame_sequencer_bit() const noexcept {
+        return (counter_ & kFrameSequencerBit) != 0;
+    }
 
 private:
     enum class Overflow : std::uint8_t {

@@ -156,15 +156,17 @@ TEST(Bus, MappedNeighboursOfUnmappedIoStillWork) {
     EXPECT_EQ(bus.read8(0xFF80), 0x56);
 }
 
-TEST(Bus, UnemulatedRegistersReadTheirMissingAndWriteOnlyBitsAsOne) {
+// The sound registers now belong to the APU (apu_test.cpp has the details);
+// these check that the bus routes them there.
+TEST(Bus, SoundRegistersReadTheirMissingAndWriteOnlyBitsAsOne) {
     Bus bus;
     struct Case {
         std::uint16_t address;
         std::uint8_t ones;
     };
-    for (const Case c : {Case{0xFF10, 0x80}, Case{0xFF11, 0x3F}, Case{0xFF13, 0xFF},
-                         Case{0xFF14, 0xBF}, Case{0xFF1A, 0x7F}, Case{0xFF1C, 0x9F},
-                         Case{0xFF20, 0xFF}, Case{0xFF23, 0xBF}, Case{0xFF26, 0x70}}) {
+    for (const Case c :
+         {Case{0xFF10, 0x80}, Case{0xFF11, 0x3F}, Case{0xFF13, 0xFF}, Case{0xFF14, 0xBF},
+          Case{0xFF1A, 0x7F}, Case{0xFF1C, 0x9F}, Case{0xFF20, 0xFF}, Case{0xFF23, 0xBF}}) {
         bus.write8(c.address, 0x00);
         EXPECT_EQ(bus.read8(c.address), c.ones) << "address " << c.address;
         bus.write8(c.address, 0xFF);
@@ -172,7 +174,7 @@ TEST(Bus, UnemulatedRegistersReadTheirMissingAndWriteOnlyBitsAsOne) {
     }
 }
 
-TEST(Bus, FullyReadableUnemulatedRegistersReadBackAsWritten) {
+TEST(Bus, FullyReadableSoundRegistersReadBackAsWritten) {
     Bus bus;
     for (const std::uint16_t address : {0xFF12, 0xFF24}) {
         bus.write8(address, 0x00);
@@ -458,6 +460,29 @@ TEST(Bus, LyIsRoutedToThePpuAndAdvancesWithTime) {
     EXPECT_EQ(bus.read8(core::Ppu::kLy), 3);
     bus.write8(core::Ppu::kLy, 0x55);
     EXPECT_EQ(bus.read8(core::Ppu::kLy), 3);
+}
+
+// The APU's frame sequencer is clocked by the falling edge of DIV bit 4, so
+// resetting DIV while that bit is set clocks it early (docs/apu-notes.md,
+// section 4).
+TEST(Bus, ResettingDivWithBitFourSetClocksTheFrameSequencer) {
+    for (const bool reset_again : {false, true}) {
+        Bus bus;
+        bus.write8(core::Timer::kDiv, 0);  // the counter starts from 0
+        bus.write8(0xFF26, 0x00);          // power cycle: the next step is 0
+        bus.write8(0xFF26, 0x80);
+        bus.write8(0xFF12, 0xF0);
+        bus.write8(0xFF11, 63);           // one length step left
+        bus.write8(0xFF14, 0x80 | 0x40);  // trigger, length enabled
+        ASSERT_EQ(bus.read8(0xFF26) & 0x01, 0x01);
+        bus.tick(4096);  // DIV bit 4 is now set; it falls only at 8192
+        ASSERT_EQ(bus.read8(core::Timer::kDiv) & 0x10, 0x10);
+        EXPECT_EQ(bus.read8(0xFF26) & 0x01, 0x01);
+        if (reset_again) {
+            bus.write8(core::Timer::kDiv, 0);  // falling edge: step 0 clocks length
+            EXPECT_EQ(bus.read8(0xFF26) & 0x01, 0x00);
+        }
+    }
 }
 
 }  // namespace

@@ -1,18 +1,21 @@
 // Integration tests: run hardware test ROMs on the whole machine.
 //
 // Each ROM checks one area against expectations verified on real hardware and
-// reports the verdict itself: Blargg's over the serial port, Mooneye's in the
-// CPU registers. Nothing here knows what the right answers are; the ROM does.
+// reports the verdict itself: Blargg's over the serial port (or, for the sound
+// tests, in cartridge RAM), Mooneye's in the CPU registers. Nothing here knows what the right
+// answers are; the ROM does.
 
 #include <gtest/gtest.h>
 
 #include <cstdint>
 #include <fstream>
 #include <iterator>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <vector>
 
+#include "app/ram_verdict.h"
 #include "core/gameboy.h"
 #include "core/registers.h"
 
@@ -95,6 +98,48 @@ INSTANTIATE_TEST_SUITE_P(
                     Rom{"mem_timing_01_read", "mem_timing/individual/01-read_timing.gb"},
                     Rom{"mem_timing_02_write", "mem_timing/individual/02-write_timing.gb"},
                     Rom{"mem_timing_03_modify", "mem_timing/individual/03-modify_timing.gb"}),
+    [](const testing::TestParamInfo<Rom>& info) { return std::string(info.param.test_name); });
+
+// --- Blargg's sound tests ------------------------------------------------
+//
+// dmg_sound reports in cartridge RAM rather than over serial: a status byte at
+// 0xA000 (0 for a pass) once the signature DE B0 61 is in 0xA001-0xA003, and
+// the text after it (app/ram_verdict.h; docs/apu-notes.md, section 2). Each
+// single ROM finishes within a few emulated seconds; allow 30.
+
+constexpr std::uint64_t kSoundMaxTicks = 30 * core::GameBoy::kTicksPerSecond;
+
+class BlarggSoundRom : public testing::TestWithParam<Rom> {};
+
+TEST_P(BlarggSoundRom, ReportsPassedInCartridgeRam) {
+    const std::string path =
+        std::string(GB_CSP_DIR) + "/blargg/dmg_sound/rom_singles/" + GetParam().path;
+    const std::vector<std::uint8_t> rom = read_rom(path);
+    ASSERT_FALSE(rom.empty()) << "cannot read " << path;
+
+    core::GameBoy gb;
+    ASSERT_EQ(gb.load_rom(rom), "");
+    std::optional<frontend::RamVerdict> verdict;
+    while (!verdict && gb.cycles() < kSoundMaxTicks && !gb.cpu().locked()) {
+        gb.run_for(kTicksPerCheck);
+        verdict = frontend::read_ram_verdict(gb.cartridge_ram());
+    }
+    ASSERT_TRUE(verdict.has_value()) << "no verdict after " << gb.cycles() << " ticks";
+    const frontend::RamVerdict result = verdict.value_or(frontend::RamVerdict{});
+    EXPECT_TRUE(result.passed()) << "status " << int{result.status} << ":\n" << result.text;
+}
+
+// The three wave-RAM tests (09, 10, 12) come with the wave channel's 2 MHz
+// timing, a later M5 step (docs/apu-notes.md, section 9).
+INSTANTIATE_TEST_SUITE_P(
+    DmgSound, BlarggSoundRom,
+    testing::Values(Rom{"01_registers", "01-registers.gb"}, Rom{"02_len_ctr", "02-len ctr.gb"},
+                    Rom{"03_trigger", "03-trigger.gb"}, Rom{"04_sweep", "04-sweep.gb"},
+                    Rom{"05_sweep_details", "05-sweep details.gb"},
+                    Rom{"06_overflow_on_trigger", "06-overflow on trigger.gb"},
+                    Rom{"07_len_sweep_period_sync", "07-len sweep period sync.gb"},
+                    Rom{"08_len_ctr_during_power", "08-len ctr during power.gb"},
+                    Rom{"11_regs_after_power", "11-regs after power.gb"}),
     [](const testing::TestParamInfo<Rom>& info) { return std::string(info.param.test_name); });
 
 // --- Mooneye Test Suite -------------------------------------------------

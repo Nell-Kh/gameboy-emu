@@ -67,6 +67,10 @@ public:
     // clock or both), so the frontend keeps a save file for it
     // (docs/cartridge-notes.md, section 6).
     [[nodiscard]] bool has_battery() const noexcept;
+    // The whole cartridge RAM, battery or not, read directly rather than
+    // through the bus (which sees nothing while RAM is disabled). Test ROMs
+    // that report in RAM need it. Empty with no cartridge or no RAM.
+    [[nodiscard]] std::span<const std::uint8_t> cartridge_ram() const noexcept;
     // Battery-backed cartridge RAM, for the save file. Empty if the cartridge
     // has no battery or no RAM.
     [[nodiscard]] std::span<const std::uint8_t> battery_ram() const noexcept;

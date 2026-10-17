@@ -41,6 +41,22 @@ Blargg's timing ROMs, from the same repository:
 | `mem_timing/02-write_timing` | the machine cycle in which each instruction writes memory | Passed |
 | `mem_timing/03-modify_timing` | the read and the write of read-modify-write instructions | Passed |
 
+Blargg's sound tests, `dmg_sound/rom_singles` from the c-sp `v7.0` collection. They report in
+cartridge RAM at `A000` rather than over serial (docs/apu-notes.md, section 2); `--headless`
+reads that verdict too.
+
+| ROM | What it covers | Result |
+|---|---|---|
+| `01-registers` | which register bits read back, NR52 power and status | Passed |
+| `02-len ctr` | length counters turn their channel off, and the extra clock when length is enabled | Passed |
+| `03-trigger` | what a trigger does to the length counter, in each half of the length period | Passed |
+| `04-sweep` | the sweep's calculations and its overflow check | Passed |
+| `05-sweep details` | sweep period 0 counted as 8, leaving negate mode, shift 0 | Passed |
+| `06-overflow on trigger` | the overflow check run on trigger | Passed |
+| `07-len sweep period sync` | the length and sweep periods follow the frame sequencer | Passed |
+| `08-len ctr during power` | on the DMG, length counters keep their values through power off and can be written while off | Passed |
+| `11-regs after power` | powering off clears every register | Passed |
+
 [Mooneye Test Suite](https://github.com/Gekkio/mooneye-test-suite), prebuilt, from
 [c-sp/game-boy-test-roms](https://github.com/c-sp/game-boy-test-roms) release `v7.0`:
 
@@ -144,7 +160,9 @@ provide.
   - Both `lcdon` tests state their own cause: on the first line after the LCD is switched on the
     PPU runs 2 dots late. That line starts in mode 0 here as on hardware, but the 2-dot lateness is
     not modelled; that is the likely cause of both mismatches, not yet confirmed.
-- Sound (M5).
+- `dmg_sound` `09-wave read while on`, `10-wave trigger while on`, `12-wave write while on`: they
+  need the wave channel's timing to the 2 MHz tick, a later M5 step (docs/apu-notes.md, section
+  6); they run and report a failure. The combined `dmg_sound` ROM is not run yet either.
 
 ## Known simplifications
 
@@ -248,10 +266,14 @@ that is a bug in this document.
   where a clean exit would have (a unit test checks this). The one difference: a clean exit
   saves the clock as emulated, so time the emulator ran slower than real time is lost, while
   after a crash that time is made up, and the clock comes back closer to real time.
-- **I/O registers:** joypad, serial, timer, interrupt and all LCD registers (`FF40`-`FF4B`) are
-  emulated. Addresses with no register read `0xFF`. The sound registers are plain memory whose
-  unused and write-only bits read as 1. They start at 0, not at their post-boot values, and have
-  no side effects: switching sound off in NR52 does not block or clear the other sound registers.
+- **I/O registers:** joypad, serial, timer, interrupt, sound and all LCD registers
+  (`FF40`-`FF4B`) are emulated. Addresses with no register read `0xFF`.
+- **Sound (M5, in progress):** the registers, NR52 power, the frame sequencer, length counters,
+  envelopes and channel 1's sweep are emulated; no waveform or sound output yet. At power-on the
+  sound registers hold the DMG boot ROM's values, channel 1 is marked on with its volume at 0 (the
+  volume the boot sound ends on is not documented), wave RAM is zero (random on hardware) and the
+  frame sequencer's next step is 0. Save states do not include the APU yet; it gets its own
+  section, and the format version 2, later in M5 (docs/apu-notes.md, section 8).
 - **LCD off:** the frame goes blank (shade 0) while the LCD is off. On hardware the screen is
   then a little lighter than shade 0.
 - **Frontend:** the window runs one whole frame at a time and paces itself to 59.73 frames per

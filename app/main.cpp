@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "app/ram_verdict.h"
 #include "app/save_file.h"
 #include "app/sdl_frontend.h"
 #include "app/state_file.h"
@@ -66,7 +67,8 @@ void print_usage(std::ostream& out) {
         << "  extension .sav.\n"
         << "  F5 saves a state to a .state file next to the ROM; F8 loads it.\n"
         << "\n"
-        << "  --headless       run ROM without a window and print its serial output\n"
+        << "  --headless       run ROM without a window and print its serial output, or\n"
+        << "                   the result it writes to cartridge RAM (Blargg's sound tests)\n"
         << "  --max-seconds N  give up after N emulated seconds (default " << kDefaultMaxSeconds
         << ")\n"
         << "  --trace          print the CPU state before every instruction\n"
@@ -226,11 +228,30 @@ std::optional<int> load(core::GameBoy& gb, const std::string& path) {
     return std::nullopt;
 }
 
+// Blargg ROMs that report in cartridge RAM instead of over serial
+// (app/ram_verdict.h): checked about 60 times per emulated second, which is
+// plenty and keeps the per-instruction loop cheap.
+constexpr std::uint64_t kTicksPerRamCheck = core::GameBoy::kTicksPerSecond / 60;
+
+std::optional<int> ram_verdict(const core::GameBoy& gb) {
+    const auto verdict = frontend::read_ram_verdict(gb.cartridge_ram());
+    if (!verdict) {
+        return std::nullopt;
+    }
+    std::cout << verdict->text << std::flush;
+    if (verdict->text.empty() || verdict->text.back() != '\n') {
+        std::cout << '\n';
+    }
+    return verdict->passed() ? kExitPassed : kExitFailed;
+}
+
 int run_headless(core::GameBoy& gb, const Options& options) {
     const std::uint64_t limit = options.max_seconds * core::GameBoy::kTicksPerSecond;
     const std::string& serial = gb.serial_output();
     std::size_t printed = 0;
     int verdict = kExitNoVerdict;
+    std::uint64_t next_ram_check = kTicksPerRamCheck;
+    bool reported_in_ram = false;
 
     while (gb.cycles() < limit && !gb.cpu().locked()) {
         if (options.trace) {
@@ -238,6 +259,14 @@ int run_headless(core::GameBoy& gb, const Options& options) {
         }
         gb.step();
 
+        if (gb.cycles() >= next_ram_check) {
+            next_ram_check += kTicksPerRamCheck;
+            if (const auto from_ram = ram_verdict(gb)) {
+                verdict = *from_ram;
+                reported_in_ram = true;
+                break;
+            }
+        }
         if (serial.size() == printed) {
             continue;
         }
@@ -263,7 +292,7 @@ int run_headless(core::GameBoy& gb, const Options& options) {
     if (verdict == kExitNoVerdict) {
         std::cerr << "\ngameboy-emu: no verdict after " << gb.cycles() << " ticks"
                   << (gb.cpu().locked() ? " (CPU locked on an undefined opcode)" : "") << "\n";
-    } else if (serial.empty() || serial.back() != '\n') {
+    } else if (!reported_in_ram && (serial.empty() || serial.back() != '\n')) {
         std::cout << '\n';
     }
     return verdict;

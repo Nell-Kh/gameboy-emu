@@ -11,6 +11,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(googletest)
 
 add_executable(unit_tests
+  unit/apu_test.cpp
   unit/bus_test.cpp
   unit/cartridge_test.cpp
   unit/cpu_alu_test.cpp
@@ -30,6 +31,7 @@ add_executable(unit_tests
   unit/ppu_render_test.cpp
   unit/ppu_test.cpp
   unit/registers_test.cpp
+  unit/ram_verdict_test.cpp
   unit/rtc_test.cpp
   unit/save_file_test.cpp
   unit/save_state_test.cpp
@@ -98,13 +100,22 @@ if(GB_FETCH_TEST_ROMS)
     GB_MOONEYE_DIR="${csp_test_roms_SOURCE_DIR}/mooneye-test-suite"
     GB_CSP_DIR="${csp_test_roms_SOURCE_DIR}"
   )
-  target_link_libraries(rom_tests PRIVATE gb::core stb GTest::gtest_main gb_warnings)
+  target_link_libraries(rom_tests PRIVATE gb::core frontend stb GTest::gtest_main gb_warnings)
   gtest_discover_tests(rom_tests)
 
   # The command-line frontend, end to end: exit status 0 means the ROM passed.
   add_test(
     NAME App.HeadlessRunsATestRom
     COMMAND gameboy-emu --headless "${gb_test_roms_SOURCE_DIR}/cpu_instrs/individual/06-ld r,r.gb"
+  )
+  # The same for a ROM that reports in cartridge RAM instead of over serial.
+  add_test(
+    NAME App.HeadlessReadsTheVerdictInCartridgeRam
+    COMMAND gameboy-emu --headless
+            "${csp_test_roms_SOURCE_DIR}/blargg/dmg_sound/rom_singles/01-registers.gb"
+  )
+  set_tests_properties(App.HeadlessReadsTheVerdictInCartridgeRam PROPERTIES
+    PASS_REGULAR_EXPRESSION "01-registers.*Passed"
   )
 endif()
 

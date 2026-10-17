@@ -1,5 +1,6 @@
 # The emulator core. No SDL, no I/O: it must build and test on its own.
 add_library(core STATIC
+  apu.cpp
   bus.cpp
   cartridge/cartridge.cpp
   cartridge/mbc1.cpp

@@ -7,6 +7,7 @@
 #include <span>
 #include <string>
 
+#include "core/apu.h"
 #include "core/cartridge/cartridge.h"
 #include "core/interrupts.h"
 #include "core/joypad.h"
@@ -102,6 +103,7 @@ private:
     Joypad joypad_;
     Serial serial_;
     Timer timer_;
+    Apu apu_;
     Ppu ppu_;
     OamDma dma_;
     // Ticks not yet making up a whole machine cycle, for the DMA.

@@ -67,36 +67,6 @@ constexpr bool is_unmapped_io(std::uint16_t address) noexcept {
            (address >= 0xFF4C && address <= 0xFF7F);
 }
 
-// I/O registers that are not emulated yet are kept as plain memory, but bits
-// that do not exist, or can only be written, read back as 1 on hardware. This
-// table holds those bits for each address in 0xFF00-0xFF7F.
-constexpr std::array<std::uint8_t, 0x80> make_io_read_mask() noexcept {
-    std::array<std::uint8_t, 0x80> mask{};
-    // Sound. Lengths and frequencies are write-only; several bits are unused.
-    mask[0x10] = 0x80;  // NR10
-    mask[0x11] = 0x3F;  // NR11
-    mask[0x13] = 0xFF;  // NR13
-    mask[0x14] = 0xBF;  // NR14
-    mask[0x16] = 0x3F;  // NR21
-    mask[0x18] = 0xFF;  // NR23
-    mask[0x19] = 0xBF;  // NR24
-    mask[0x1A] = 0x7F;  // NR30
-    mask[0x1B] = 0xFF;  // NR31
-    mask[0x1C] = 0x9F;  // NR32
-    mask[0x1D] = 0xFF;  // NR33
-    mask[0x1E] = 0xBF;  // NR34
-    mask[0x20] = 0xFF;  // NR41
-    mask[0x23] = 0xBF;  // NR44
-    mask[0x26] = 0x70;  // NR52
-    return mask;
-}
-
-constexpr std::array<std::uint8_t, 0x80> kIoReadMask = make_io_read_mask();
-
-constexpr bool is_io(std::uint16_t address) noexcept {
-    return address >= kIoStart && address < kIoStart + kIoReadMask.size();
-}
-
 }  // namespace
 
 Cartridge* Bus::cartridge() noexcept {
@@ -138,6 +108,9 @@ std::uint8_t Bus::read8(std::uint16_t address) const noexcept {
     if (Ppu::is_register(address)) {
         return ppu_.read(address);
     }
+    if (Apu::is_register(address)) {
+        return apu_.read(address);
+    }
     switch (address) {
         case Joypad::kRegister:
             return joypad_.read();
@@ -157,9 +130,6 @@ std::uint8_t Bus::read8(std::uint16_t address) const noexcept {
         case kInterruptEnable:
             return interrupt_enable_;
         default:
-            if (is_io(address)) {
-                return memory_[address] | kIoReadMask.at(address - kIoStart);
-            }
             return memory_[address];
     }
 }
@@ -196,6 +166,10 @@ void Bus::write8(std::uint16_t address, std::uint8_t value) {
         interrupt_flag_ |= ppu_.write(address, value);
         return;
     }
+    if (Apu::is_register(address)) {
+        apu_.write(address, value);
+        return;
+    }
     switch (address) {
         case Joypad::kRegister:
             interrupt_flag_ |= joypad_.write(value);
@@ -204,7 +178,15 @@ void Bus::write8(std::uint16_t address, std::uint8_t value) {
         case Serial::kControl:
             serial_.write(address, value);
             break;
-        case Timer::kDiv:
+        case Timer::kDiv: {
+            // Resetting DIV can make bit 4 fall, which clocks the frame sequencer.
+            const bool before = timer_.frame_sequencer_bit();
+            timer_.write(address, value);
+            if (before && !timer_.frame_sequencer_bit()) {
+                apu_.step_frame_sequencer();
+            }
+            break;
+        }
         case Timer::kTima:
         case Timer::kTma:
         case Timer::kTac:
@@ -233,8 +215,12 @@ void Bus::tick(std::uint32_t t_cycles) noexcept {
         step_dma();
     }
     interrupt_flag_ |= ppu_.tick(t_cycles);
+    const bool frame_sequencer_bit = timer_.frame_sequencer_bit();
     if (timer_.tick(t_cycles)) {
         request_interrupt(Interrupt::Timer);
+    }
+    if (frame_sequencer_bit && !timer_.frame_sequencer_bit()) {
+        apu_.step_frame_sequencer();
     }
     if (serial_.tick(t_cycles)) {
         request_interrupt(Interrupt::Serial);

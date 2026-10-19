@@ -94,8 +94,10 @@ public:
     [[nodiscard]] bool full() const noexcept {
         return SDL_GetQueuedAudioSize(device_) >= kTargetQueuedBytes;
     }
-    void queue(const std::vector<float>& samples) noexcept {
-        if (started_ && SDL_GetQueuedAudioSize(device_) == 0) {
+    // Queues a frame's sound. Returns true if the queue had run dry first.
+    bool queue(const std::vector<float>& samples) noexcept {
+        const bool underrun = started_ && SDL_GetQueuedAudioSize(device_) == 0;
+        if (underrun) {
             ++underruns_;
         }
         SDL_QueueAudio(device_, samples.data(),
@@ -104,6 +106,7 @@ public:
             SDL_PauseAudioDevice(device_, 0);
             started_ = true;
         }
+        return underrun;
     }
     [[nodiscard]] std::uint64_t underruns() const noexcept {
         return underruns_;
@@ -114,6 +117,18 @@ private:
     bool started_ = false;
     std::uint64_t underruns_ = 0;
 };
+
+// Queues a frame's sound and says when an underrun happened, so the count
+// printed on exit can be traced to its causes (the first second, a window
+// drag, a stall out of nowhere).
+void queue_frame_sound(AudioOut& audio, const std::vector<float>& samples, std::uint64_t frames,
+                       std::uint64_t started, std::uint64_t counts_per_second) {
+    if (!audio.queue(samples)) {
+        return;
+    }
+    const std::uint64_t ms = (SDL_GetPerformanceCounter() - started) * 1000 / counts_per_second;
+    std::cerr << "gameboy-emu: audio: underrun at frame " << frames << " (" << ms << " ms)\n";
+}
 
 // SDL_Init in the constructor, SDL_Quit in the destructor.
 class SdlVideo {
@@ -334,7 +349,7 @@ int run_window(core::GameBoy& gb, const WindowOptions& options, BatterySaver* sa
         if (audio) {
             samples.clear();
             gb.take_audio(samples);
-            audio->queue(samples);
+            queue_frame_sound(*audio, samples, frames, started, counts_per_second);
         }
 
         const core::Ppu::Frame& frame = gb.frame();

@@ -142,7 +142,9 @@ mismatch, and the decision is made then.
 **(choice)**, by averaging the analog level over each sample's clock ticks (a box filter), then a
 high-pass filter like the capacitor on the real output, so a DAC switched on or off does not
 leave a constant offset. Samples go into a buffer the frontend drains with
-`GameBoy::take_audio()`; the core stays free of I/O. **Agreed in review:** aliasing on the square
+`GameBoy::take_audio()`; the core stays free of I/O. They keep coming, as silence, while the APU
+is powered off: with audio setting the pace (below), a game that switches sound off would
+otherwise starve the queue and run unpaced. **Agreed in review:** aliasing on the square
 channels is accepted for M5; band-limited synthesis (as in `blip_buf`) is the planned upgrade for
 v1.1. Both go into the audio ADR.
 

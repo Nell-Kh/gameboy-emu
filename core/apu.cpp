@@ -440,11 +440,14 @@ std::uint16_t Apu::sweep_calculate() noexcept {
 }
 
 void Apu::tick(std::uint32_t t_cycles) noexcept {
+    if (output_enabled_) {
+        // At the level the channels had during these ticks. Powered off the
+        // level is silence, but the samples still come: the window's pace
+        // hangs on them (ADR-025).
+        produce_samples(t_cycles);
+    }
     if (!powered_) {
         return;
-    }
-    if (output_enabled_) {
-        produce_samples(t_cycles);  // at the level the channels had during these ticks
     }
     tick_square(0, t_cycles);
     tick_square(1, t_cycles);

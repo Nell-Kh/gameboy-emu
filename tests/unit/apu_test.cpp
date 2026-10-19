@@ -704,6 +704,19 @@ TEST(ApuOutput, ItMakes48000StereoSamplesPerSecondExactly) {
     EXPECT_EQ(run_for_samples(apu, 1.0).size(), 2U * Apu::kSampleRate);
 }
 
+// A game that switches sound off (NR52 bit 7) must not starve the window,
+// whose pace hangs on the samples: they keep coming, as silence.
+TEST(ApuOutput, PoweredOffItStillMakesSamplesOfSilence) {
+    Apu apu = fresh_apu();
+    apu.set_output_enabled(true);
+    apu.write(kNr52, 0x00);
+    const auto samples = run_for_samples(apu, 0.5);
+    ASSERT_EQ(samples.size(), Apu::kSampleRate);  // 0.5 s of stereo pairs
+    for (const float sample : samples) {
+        ASSERT_EQ(sample, 0.0F);
+    }
+}
+
 // The tone test (agreed in review): channel 1 at a known period must come
 // out at the matching frequency, 131072 / (2048 - period) Hz.
 TEST(ApuOutput, ATonePlayedOnChannelOneComesOutAtItsFrequency) {

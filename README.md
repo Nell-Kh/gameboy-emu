@@ -65,8 +65,8 @@ is one, in a `.sav` file next to the ROM, written when the window closes and whi
 saves the whole machine to a `.state` file next to the ROM and F8 loads it back; there is one
 state per ROM, and a state in another format version or for another ROM is refused. Sound plays
 through the default audio device, which also sets the game's pace; `--mute` turns it off (the
-clock then sets the pace). On exit the window prints how many audio underruns there were: 0 means
-no crackle. Bring your own ROM: none is included.
+clock then sets the pace). The window reports each audio underrun as it happens and prints how
+many there were on exit: 0 means no crackle. Bring your own ROM: none is included.
 
 ## Run a test ROM
 

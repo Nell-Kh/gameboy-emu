@@ -397,4 +397,115 @@ TEST(ApuSquare, ANewPeriodTakesEffectAtTheNextStep) {
     EXPECT_EQ(apu.output(1), 15);
 }
 
+// --- The noise channel (docs/apu-notes.md, section 5) ---
+
+constexpr std::uint16_t kNr43 = 0xFF22;
+
+// Starts the noise channel at full volume with NR43 = `nr43`.
+void start_noise(Apu& apu, std::uint8_t nr43) {
+    apu.write(kNr42, 0xF0);
+    apu.write(kNr43, nr43);
+    apu.write(kNr44, kTrigger);
+}
+
+// The output after each of the next `count` shifts, for NR43 divisor code 0
+// and shift 0, where one shift takes 8 clock ticks.
+std::vector<std::uint8_t> noise_after_shifts(Apu& apu, int count) {
+    std::vector<std::uint8_t> out;
+    for (int i = 0; i < count; ++i) {
+        apu.tick(8);
+        out.push_back(apu.output(3));
+    }
+    return out;
+}
+
+// Worked out by hand: a trigger fills the register with ones, the XOR of
+// bits 0 and 1 stays 0 while both are 1, so zeros shift in from the top; bit
+// 0 (which the output inverts) first becomes 0 after the 15th shift.
+TEST(ApuNoise, ATriggerFillsTheRegisterWithOnesSoTheOutputStartsLow) {
+    Apu apu = fresh_apu();
+    start_noise(apu, 0x00);
+    EXPECT_EQ(apu.output(3), 0);
+    const auto out = noise_after_shifts(apu, 15);
+    for (int i = 0; i < 14; ++i) {
+        EXPECT_EQ(out.at(static_cast<std::size_t>(i)), 0) << "after shift " << i + 1;
+    }
+    EXPECT_EQ(out.at(14), 15);
+}
+
+// True if `seq` repeats every `period` values over its whole length.
+bool repeats_every(const std::vector<std::uint8_t>& seq, std::size_t period) {
+    for (std::size_t i = 0; i + period < seq.size(); ++i) {
+        if (seq[i] != seq[i + period]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+TEST(ApuNoise, TheLongModeSequenceRepeatsEvery32767Shifts) {
+    Apu apu = fresh_apu();
+    start_noise(apu, 0x00);
+    const auto seq = noise_after_shifts(apu, 32767 + 1000);
+    EXPECT_TRUE(repeats_every(seq, 32767));
+    // 32767 = 7 * 31 * 151: no shorter period divides it.
+    for (const std::size_t shorter : {32767 / 7, 32767 / 31, 32767 / 151}) {
+        EXPECT_FALSE(repeats_every(seq, shorter)) << shorter;
+    }
+}
+
+TEST(ApuNoise, TheShortModeSequenceRepeatsEvery127Shifts) {
+    Apu apu = fresh_apu();
+    start_noise(apu, 0x08);  // NR43 bit 3: 7-bit mode
+    const auto seq = noise_after_shifts(apu, 127 * 4);
+    EXPECT_TRUE(repeats_every(seq, 127));
+    EXPECT_FALSE(repeats_every(seq, 1));  // 127 is prime: the only shorter period
+}
+
+TEST(ApuNoise, TheDivisorAndShiftSetTheShiftRate) {
+    // Divisor code 1, shift 2: 16 << 2 = 64 clock ticks per shift. The output
+    // first goes high on the 15th shift.
+    Apu apu = fresh_apu();
+    start_noise(apu, 0x21);
+    apu.tick(15 * 64 - 1);
+    EXPECT_EQ(apu.output(3), 0);
+    apu.tick(1);
+    EXPECT_EQ(apu.output(3), 15);
+
+    // Divisor code 5, shift 0: 80 ticks per shift.
+    Apu other = fresh_apu();
+    start_noise(other, 0x05);
+    other.tick(15 * 80 - 1);
+    EXPECT_EQ(other.output(3), 0);
+    other.tick(1);
+    EXPECT_EQ(other.output(3), 15);
+}
+
+TEST(ApuNoise, ClockShifts14And15StopTheRegister) {
+    for (const std::uint8_t nr43 : {std::uint8_t{0xE0}, std::uint8_t{0xF0}}) {
+        Apu apu = fresh_apu();
+        start_noise(apu, nr43);
+        apu.tick(kTicksPerSecond);
+        EXPECT_EQ(apu.output(3), 0) << int{nr43};
+        EXPECT_TRUE(apu.channel_on(3));
+    }
+}
+
+TEST(ApuNoise, ARetriggerRestartsTheSequence) {
+    Apu apu = fresh_apu();
+    start_noise(apu, 0x00);
+    const auto first = noise_after_shifts(apu, 40);
+    start_noise(apu, 0x00);
+    EXPECT_EQ(noise_after_shifts(apu, 40), first);
+}
+
+TEST(ApuNoise, TheOutputIsTheEnvelopeVolume) {
+    Apu apu = fresh_apu();
+    apu.write(kNr42, 0x90);  // volume 9
+    apu.write(kNr43, 0x00);
+    apu.write(kNr44, kTrigger);
+    apu.tick(15 * 8);
+    EXPECT_EQ(apu.output(3), 9);
+}
+
 }  // namespace

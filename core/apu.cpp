@@ -57,6 +57,12 @@ constexpr std::array<std::uint8_t, 4> kDutyPatterns = {
     0b0111'1110,  // 0 1 1 1 1 1 1 0
 };
 
+constexpr int kNoiseChannel = 3;
+constexpr std::uint16_t kNr43 = 0xFF22;
+constexpr std::uint16_t kLfsrFull = 0x7FFF;
+constexpr std::uint8_t kNoiseShortModeBit = 0x08;  // NR43 bit 3: 7-bit LFSR
+constexpr std::uint8_t kNoiseStoppedShift = 14;    // clock shifts 14 and 15 stop it
+
 constexpr std::uint16_t full_length(int channel) noexcept {
     return channel == kWaveChannel ? 256 : 64;
 }
@@ -244,6 +250,10 @@ void Apu::trigger(int channel) noexcept {
         // The duty step is not reset; only the timer is reloaded.
         c.timer = (kPeriodRange - square_period(channel)) * kSquareTicksPerStep;
     }
+    if (channel == kNoiseChannel) {
+        lfsr_ = kLfsrFull;
+        c.timer = noise_period();
+    }
     if (channel != kWaveChannel) {
         const std::uint8_t envelope =
             reg(kChannelBase.at(static_cast<std::size_t>(channel)) + kEnvelopeOffset);
@@ -380,6 +390,7 @@ void Apu::tick(std::uint32_t t_cycles) noexcept {
     }
     tick_square(0, t_cycles);
     tick_square(1, t_cycles);
+    tick_noise(t_cycles);
 }
 
 // The timer counts down (2048 - period) * 4 clock ticks per duty step. A new
@@ -399,10 +410,48 @@ void Apu::tick_square(int channel, std::uint32_t t_cycles) noexcept {
     c.timer -= t_cycles;
 }
 
+// The divisor code r (NR43 bits 0-2) gives 8 clock ticks for 0 and 16 * r
+// otherwise, shifted left by the clock shift (bits 4-7) (Pan Docs).
+std::uint32_t Apu::noise_period() const noexcept {
+    const std::uint8_t nr43 = reg(kNr43);
+    const std::uint32_t shift = nr43 >> 4U;
+    if (shift >= kNoiseStoppedShift) {
+        return 0;
+    }
+    const std::uint32_t code = nr43 & kPeriodBits;
+    const std::uint32_t divisor = code == 0 ? 8 : 16 * code;
+    return divisor << shift;
+}
+
+// Each shift: the XOR of bits 0 and 1 goes into bit 14 (and also bit 6 in
+// short mode) as the register shifts right. Like the square channels' timer,
+// it only runs while the channel is on.
+void Apu::tick_noise(std::uint32_t t_cycles) noexcept {
+    Channel& c = channels_[kNoiseChannel];
+    const std::uint32_t period = noise_period();
+    if (!c.on || period == 0) {
+        return;
+    }
+    const bool short_mode = (reg(kNr43) & kNoiseShortModeBit) != 0;
+    while (t_cycles >= c.timer) {
+        t_cycles -= c.timer;
+        c.timer = period;
+        const auto feedback = static_cast<std::uint16_t>((lfsr_ ^ (lfsr_ >> 1U)) & 1U);
+        lfsr_ = static_cast<std::uint16_t>((lfsr_ >> 1U) | (feedback << 14U));
+        if (short_mode) {
+            lfsr_ = static_cast<std::uint16_t>((lfsr_ & ~(1U << 6U)) | (feedback << 6U));
+        }
+    }
+    c.timer -= t_cycles;
+}
+
 std::uint8_t Apu::output(int channel) const noexcept {
     const Channel& c = channels_.at(static_cast<std::size_t>(channel));
-    if (!c.on || channel >= kWaveChannel) {
+    if (!c.on || channel == kWaveChannel) {
         return 0;
+    }
+    if (channel == kNoiseChannel) {
+        return (lfsr_ & 1U) == 0 ? c.volume : 0;
     }
     const std::uint8_t duty =
         reg(kChannelBase.at(static_cast<std::size_t>(channel)) + kLengthOffset) >> kDutyShift;

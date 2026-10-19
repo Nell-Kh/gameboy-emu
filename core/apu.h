@@ -9,7 +9,7 @@ namespace core {
 // The audio processing unit (docs/apu-notes.md): sound registers 0xFF10-0xFF26
 // and wave RAM 0xFF30-0xFF3F, the 512 Hz frame sequencer, and per channel the
 // on/off state, length counter, volume envelope, (channel 1) frequency sweep
-// and, for the square channels, the waveform. The wave and noise channels and
+// and, for the square and noise channels, the waveform. The wave channel and
 // the mixed output come in later M5 steps.
 //
 // Channels are numbered 0-3 here (Pan Docs' channels 1-4): 0 and 1 are the
@@ -44,8 +44,9 @@ public:
     void tick(std::uint32_t t_cycles) noexcept;
 
     // A channel's digital output, 0-15, which its DAC turns into a level:
-    // for a square channel the current duty step (0 or 1) times its volume.
-    // 0 while the channel is off.
+    // for a square channel the current duty step (0 or 1) times its volume,
+    // for the noise channel the inverted low bit of its shift register times
+    // its volume. 0 while the channel is off.
     [[nodiscard]] std::uint8_t output(int channel) const noexcept;
 
     // For tests and, later, the mixer.
@@ -93,6 +94,10 @@ private:
     // The 11-bit period of a square channel (0 or 1), from NRx3 and NRx4.
     [[nodiscard]] std::uint16_t square_period(int channel) const noexcept;
     void tick_square(int channel, std::uint32_t t_cycles) noexcept;
+    // Clock ticks between shifts of the noise LFSR, from NR43; 0 if the
+    // clock shift (14 or 15) stops it.
+    [[nodiscard]] std::uint32_t noise_period() const noexcept;
+    void tick_noise(std::uint32_t t_cycles) noexcept;
 
     std::array<std::uint8_t, kRegisterCount> registers_{};
     std::array<std::uint8_t, 16> wave_ram_{};
@@ -105,6 +110,9 @@ private:
     std::uint8_t sweep_timer_ = 0;
     bool sweep_enabled_ = false;
     bool sweep_negated_ = false;  // a calculation used negate since the trigger
+
+    // Channel 4's linear feedback shift register, 15 bits.
+    std::uint16_t lfsr_ = 0x7FFF;
 };
 
 }  // namespace core

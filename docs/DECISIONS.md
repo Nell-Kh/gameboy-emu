@@ -356,9 +356,9 @@ record that supersedes the old one, not by editing history.
 - **Decision:** With an audio device open, the loop runs a frame only while less than 50 ms of
   sound is queued and sleeps a millisecond otherwise; the picture follows the sound. Playback
   starts once 50 ms is queued, never on an empty queue. The loop counts underruns (the queue found
-  empty after that), reports each one with its frame and time as it happens, and prints the
-  count, with the frame count and run time, on exit, so "no crackle" is a number and each
-  crackle can be traced to its cause. With `--mute`, with no audio device, and in the app-smoke CI job (which
+  empty after that), reports each one as it happens with its frame, its time and the length of
+  the stall behind it, and prints the count, with the frame count and run time, on exit, so "no
+  crackle" is a number and each crackle can be traced to its cause. With `--mute`, with no audio device, and in the app-smoke CI job (which
   passes `--mute`, so the save-on-signal timing does not depend on the dummy audio driver), the
   wall-clock pacing of ADR-016 stays.
 - **Consequences:** Sound and picture cannot drift apart, and a stall needs no catch-up logic:

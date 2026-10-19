@@ -94,8 +94,14 @@ public:
     [[nodiscard]] bool full() const noexcept {
         return SDL_GetQueuedAudioSize(device_) >= kTargetQueuedBytes;
     }
-    // Queues a frame's sound. Returns true if the queue had run dry first.
-    bool queue(const std::vector<float>& samples) noexcept {
+    // Queues a frame's sound. If the queue had run dry first (an underrun),
+    // returns the milliseconds since the frame before was queued: the length
+    // of the stall that caused it.
+    std::optional<std::uint64_t> queue(const std::vector<float>& samples) noexcept {
+        const std::uint64_t now = SDL_GetPerformanceCounter();
+        const std::uint64_t since_last =
+            (now - last_queued_) * 1000 / SDL_GetPerformanceFrequency();
+        last_queued_ = now;
         const bool underrun = started_ && SDL_GetQueuedAudioSize(device_) == 0;
         if (underrun) {
             ++underruns_;
@@ -106,7 +112,10 @@ public:
             SDL_PauseAudioDevice(device_, 0);
             started_ = true;
         }
-        return underrun;
+        if (!underrun) {
+            return std::nullopt;
+        }
+        return since_last;
     }
     [[nodiscard]] std::uint64_t underruns() const noexcept {
         return underruns_;
@@ -116,18 +125,21 @@ private:
     SDL_AudioDeviceID device_ = 0;
     bool started_ = false;
     std::uint64_t underruns_ = 0;
+    std::uint64_t last_queued_ = SDL_GetPerformanceCounter();
 };
 
-// Queues a frame's sound and says when an underrun happened, so the count
-// printed on exit can be traced to its causes (the first second, a window
-// drag, a stall out of nowhere).
+// Queues a frame's sound and says when an underrun happened and how long the
+// stall was, so the count printed on exit can be traced to its causes (the
+// first second, a window drag, a stall out of nowhere).
 void queue_frame_sound(AudioOut& audio, const std::vector<float>& samples, std::uint64_t frames,
                        std::uint64_t started, std::uint64_t counts_per_second) {
-    if (!audio.queue(samples)) {
+    const std::optional<std::uint64_t> stall_ms = audio.queue(samples);
+    if (!stall_ms.has_value()) {
         return;
     }
     const std::uint64_t ms = (SDL_GetPerformanceCounter() - started) * 1000 / counts_per_second;
-    std::cerr << "gameboy-emu: audio: underrun at frame " << frames << " (" << ms << " ms)\n";
+    std::cerr << "gameboy-emu: audio: underrun at frame " << frames << " (" << ms
+              << " ms): " << stall_ms.value() << " ms since the frame before\n";
 }
 
 // SDL_Init in the constructor, SDL_Quit in the destructor.
@@ -287,6 +299,10 @@ int run_window(core::GameBoy& gb, const WindowOptions& options, BatterySaver* sa
         std::cerr << "gameboy-emu: cannot start SDL: " << SDL_GetError() << "\n";
         return kExitSdlError;
     }
+    // SDL turns text input on by default on desktops. A game window has no
+    // use for it, and on macOS it sends every key press on a detour through
+    // the input-method framework.
+    SDL_StopTextInput();
     // Scale up with hard pixel edges, not blurred.
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
 

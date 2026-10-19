@@ -275,7 +275,13 @@ that is a bug in this document.
   envelopes, channel 1's sweep and all four waveforms are emulated: the square channels (duty
   pattern, period, volume), the wave channel (32 four-bit samples, volume code) and the noise
   channel (15- and 7-bit shift register, divisor and clock shift), checked by unit tests and all
-  twelve `dmg_sound` tests. The sound output (mixing, NR50/NR51, filtering) is not done yet. A
+  twelve `dmg_sound` tests. The four channels are mixed into stereo samples at 48 000 per second:
+  each DAC gives -1 to 1, NR51 routes it, NR50 scales each side, the sum is scaled so the loudest
+  possible mix is 1, each sample is the average level over its stretch of clock ticks (a box
+  filter, so high notes alias; band-limited synthesis is the planned v1.1 upgrade), and a
+  high-pass filter like the output capacitor removes the constant offset a DAC leaves. A tone test
+  checks the frequency of the real output and amplitude tests check silence. Nothing reaches the
+  speakers yet; that is the next M5 step. A
   trigger keeps a square channel's duty step and power-off resets it to 0. The channel timers
   run only while the channel is on (choice: what they do while it is off is not documented and
   only shows as where a later trigger starts). The wave channel's three DMG timings (the first

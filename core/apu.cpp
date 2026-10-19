@@ -1,6 +1,7 @@
 #include "core/apu.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace core {
 
@@ -442,10 +443,98 @@ void Apu::tick(std::uint32_t t_cycles) noexcept {
     if (!powered_) {
         return;
     }
+    if (output_enabled_) {
+        produce_samples(t_cycles);  // at the level the channels had during these ticks
+    }
     tick_square(0, t_cycles);
     tick_square(1, t_cycles);
     tick_wave(t_cycles);
     tick_noise(t_cycles);
+}
+
+bool Apu::any_dac_on() const noexcept {
+    for (int channel = 0; channel < kChannels; ++channel) {
+        if (dac_on(channel)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+Apu::Stereo Apu::mix() const noexcept {
+    constexpr float kDacSteps = 7.5F;        // digital 0-15 to analog -1 to 1
+    constexpr float kLoudest = 4.0F * 8.0F;  // four channels at volume 8
+    Stereo level;
+    const std::uint8_t nr51 = reg(kNr51);
+    for (int channel = 0; channel < kChannels; ++channel) {
+        if (!dac_on(channel)) {
+            continue;  // a DAC that is off adds nothing
+        }
+        const float analog = (static_cast<float>(output(channel)) / kDacSteps) - 1.0F;
+        const auto bit = static_cast<unsigned>(channel);
+        if ((nr51 & (0x10U << bit)) != 0) {
+            level.left += analog;
+        }
+        if ((nr51 & (0x01U << bit)) != 0) {
+            level.right += analog;
+        }
+    }
+    const std::uint8_t nr50 = reg(kNr50);
+    level.left *= static_cast<float>(((nr50 >> 4U) & 7U) + 1) / kLoudest;
+    level.right *= static_cast<float>((nr50 & 7U) + 1) / kLoudest;
+    return level;
+}
+
+void Apu::set_output_enabled(bool enabled) noexcept {
+    output_enabled_ = enabled;
+}
+
+void Apu::take_samples(std::vector<float>& out) {
+    out.insert(out.end(), samples_.begin(), samples_.end());
+    samples_.clear();
+}
+
+// A box filter: each sample is the average level over its own stretch of
+// clock ticks, split exactly where a sample ends inside a tick run.
+void Apu::produce_samples(std::uint32_t t_cycles) {
+    constexpr std::uint64_t kUnitsPerSample = 4'194'304;  // clock ticks per second
+    const Stereo level = powered_ ? mix() : Stereo{};
+    std::uint64_t units = std::uint64_t{t_cycles} * kSampleRate;
+    while (sample_phase_ + units >= kUnitsPerSample) {
+        const std::uint64_t part = kUnitsPerSample - sample_phase_;
+        sample_sum_.left += level.left * static_cast<float>(part);
+        sample_sum_.right += level.right * static_cast<float>(part);
+        finish_sample(sample_sum_);
+        sample_sum_ = Stereo{};
+        sample_phase_ = 0;
+        units -= part;
+    }
+    sample_phase_ += units;
+    sample_sum_.left += level.left * static_cast<float>(units);
+    sample_sum_.right += level.right * static_cast<float>(units);
+}
+
+// The high-pass filter of the output capacitor (Blargg's sound notes on
+// the gbdev wiki): it removes the constant offset a DAC leaves, and lets
+// the output fall to silence when every DAC is off.
+void Apu::finish_sample(Stereo sum) {
+    constexpr float kUnitsPerSample = 4'194'304.0F;
+    // The capacitor keeps 0.999958 of its charge per clock tick.
+    static const float kCharge = std::pow(0.999958F, kUnitsPerSample / kSampleRate);
+    const Stereo in{sum.left / kUnitsPerSample, sum.right / kUnitsPerSample};
+    Stereo out;
+    if (any_dac_on()) {
+        out.left = in.left - capacitor_.left;
+        out.right = in.right - capacitor_.right;
+        capacitor_.left = in.left - (out.left * kCharge);
+        capacitor_.right = in.right - (out.right * kCharge);
+    }
+    if (samples_.size() >= 2 * kMaxQueuedSamples) {
+        ++dropped_samples_;
+        return;
+    }
+    samples_.push_back(out.left);
+    samples_.push_back(out.right);
 }
 
 std::uint32_t Apu::wave_period() const noexcept {

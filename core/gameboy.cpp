@@ -108,6 +108,18 @@ const std::string& GameBoy::serial_output() const noexcept {
     return bus_.serial_output();
 }
 
+void GameBoy::set_audio_enabled(bool enabled) noexcept {
+    bus_.apu().set_output_enabled(enabled);
+}
+
+void GameBoy::take_audio(std::vector<float>& out) {
+    bus_.apu().take_samples(out);
+}
+
+const Apu& GameBoy::apu() const noexcept {
+    return bus_.apu();
+}
+
 const Cpu& GameBoy::cpu() const noexcept {
     return cpu_;
 }

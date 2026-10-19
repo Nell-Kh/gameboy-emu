@@ -92,6 +92,14 @@ public:
     // Everything the program has sent over the serial port so far.
     [[nodiscard]] const std::string& serial_output() const noexcept;
 
+    // Sound (docs/apu-notes.md, section 7). Off until a frontend turns it on;
+    // then take_audio() moves the stereo samples made since the last call
+    // (Apu::kSampleRate per second per side, left and right interleaved,
+    // -1 to 1) to the end of `out`.
+    void set_audio_enabled(bool enabled) noexcept;
+    void take_audio(std::vector<float>& out);
+    [[nodiscard]] const Apu& apu() const noexcept;
+
     // Save states (ADR-020; docs/cartridge-notes.md, section 7): the whole
     // machine as a file's bytes, a 48-byte header and then the sections.
     static constexpr std::size_t kStateHeaderSize = 48;

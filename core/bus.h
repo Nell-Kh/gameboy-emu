@@ -92,6 +92,14 @@ public:
     // Every byte the program has sent over the serial port.
     [[nodiscard]] const std::string& serial_output() const noexcept;
 
+    // The sound hardware, for its output and for tests.
+    [[nodiscard]] Apu& apu() noexcept {
+        return apu_;
+    }
+    [[nodiscard]] const Apu& apu() const noexcept {
+        return apu_;
+    }
+
 private:
     // Reads as the DMA controller sees memory: no OAM blocking, and sources
     // from 0xE000 up reach work RAM, as echo RAM does for the CPU.

@@ -3,13 +3,15 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace core {
 
 // The audio processing unit (docs/apu-notes.md): sound registers 0xFF10-0xFF26
 // and wave RAM 0xFF30-0xFF3F, the 512 Hz frame sequencer, and per channel the
 // on/off state, length counter, volume envelope, (channel 1) frequency sweep
-// and the four waveforms. The mixed output comes in a later M5 step.
+// and the four waveforms, and the mix of them all into stereo samples
+// (docs/apu-notes.md, section 7).
 //
 // Channels are numbered 0-3 here (Pan Docs' channels 1-4): 0 and 1 are the
 // square channels, 2 the wave channel, 3 the noise channel.
@@ -20,6 +22,11 @@ public:
     static constexpr std::uint16_t kWaveRamStart = 0xFF30;
     static constexpr std::uint16_t kWaveRamEnd = 0xFF3F;
     static constexpr int kChannels = 4;
+    // Output samples per second, per side (docs/apu-notes.md, section 7).
+    static constexpr std::uint32_t kSampleRate = 48'000;
+    // At most this many stereo samples wait to be taken; more are dropped,
+    // so a frontend that stops taking them cannot make memory grow.
+    static constexpr std::size_t kMaxQueuedSamples = kSampleRate;
 
     // The state the boot ROM leaves behind (docs/apu-notes.md, section 3).
     Apu() noexcept;
@@ -49,7 +56,18 @@ public:
     // times its volume. 0 while the channel is off.
     [[nodiscard]] std::uint8_t output(int channel) const noexcept;
 
-    // For tests and, later, the mixer.
+    // Sound output. Off by default, so headless runs and tests pay nothing
+    // for it; the window turns it on.
+    void set_output_enabled(bool enabled) noexcept;
+    // Moves the samples made since the last call to the end of `out`, as
+    // left, right pairs, each between -1 and 1.
+    void take_samples(std::vector<float>& out);
+    // Stereo samples dropped because nobody took them in time.
+    [[nodiscard]] std::uint64_t dropped_samples() const noexcept {
+        return dropped_samples_;
+    }
+
+    // For tests and the mixer.
     [[nodiscard]] bool powered() const noexcept {
         return powered_;
     }
@@ -109,6 +127,20 @@ private:
     // A CPU write to 0xFF30-0xFF3F.
     void write_wave_ram(std::uint16_t address, std::uint8_t value) noexcept;
 
+    // The mixed level of each side right now, before filtering: each DAC
+    // that is on gives -1 to 1, NR51 routes it, NR50 scales the side; the
+    // sum is scaled so the loudest possible mix is 1.
+    struct Stereo {
+        float left = 0;
+        float right = 0;
+    };
+    [[nodiscard]] Stereo mix() const noexcept;
+    [[nodiscard]] bool any_dac_on() const noexcept;
+    // Adds `t_cycles` ticks at the current level to the sample being built
+    // and finishes samples as their time is reached.
+    void produce_samples(std::uint32_t t_cycles);
+    void finish_sample(Stereo sum);
+
     std::array<std::uint8_t, kRegisterCount> registers_{};
     std::array<std::uint8_t, 16> wave_ram_{};
     std::array<Channel, kChannels> channels_{};
@@ -128,6 +160,17 @@ private:
     // turn), and the clock ticks since that fetch.
     std::uint8_t wave_sample_ = 0;
     std::uint32_t since_wave_fetch_ = 0xFFFF;
+
+    // Sound output. Not part of the machine's state: save states leave it
+    // out (docs/apu-notes.md, section 8).
+    bool output_enabled_ = false;
+    // Time is counted in units of 1/(4194304 * 48000) s, so one clock tick
+    // is kSampleRate units and one sample is 4194304 units: no rounding.
+    std::uint64_t sample_phase_ = 0;
+    Stereo sample_sum_;           // level times units, for the sample being built
+    Stereo capacitor_;            // the high-pass filter's memory
+    std::vector<float> samples_;  // left, right, left, right, ...
+    std::uint64_t dropped_samples_ = 0;
 };
 
 }  // namespace core

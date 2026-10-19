@@ -6,7 +6,9 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -655,6 +657,157 @@ TEST(ApuWave, ARetriggerAtAnyOtherMomentLeavesWaveRamAlone) {
     apu.write(kNr30, 0x00);
     EXPECT_EQ(apu.read(kWave + 0), 0x01);
     EXPECT_EQ(apu.read(kWave + 3), 0x67);
+}
+
+// --- The mix and the output samples (docs/apu-notes.md, section 7) ---
+
+constexpr std::uint16_t kNr51 = 0xFF25;
+
+// Runs the APU for `seconds` of emulated time in 4-tick steps and returns
+// the stereo samples it made.
+std::vector<float> run_for_samples(Apu& apu, double seconds) {
+    const auto ticks = static_cast<std::uint64_t>(seconds * kTicksPerSecond);
+    for (std::uint64_t t = 0; t < ticks; t += 4) {
+        apu.tick(4);
+    }
+    std::vector<float> out;
+    apu.take_samples(out);
+    return out;
+}
+
+// Zero crossings from negative to positive of the left channel.
+int rising_crossings(const std::vector<float>& samples) {
+    int count = 0;
+    bool below = true;
+    for (std::size_t i = 0; i < samples.size(); i += 2) {
+        const bool now_below = samples[i] < 0.0F;
+        if (below && !now_below) {
+            ++count;
+        }
+        below = now_below;
+    }
+    return count;
+}
+
+TEST(ApuOutput, NothingIsProducedUntilOutputIsEnabled) {
+    Apu apu = fresh_apu();
+    EXPECT_TRUE(run_for_samples(apu, 0.1).empty());
+    apu.set_output_enabled(true);
+    EXPECT_FALSE(run_for_samples(apu, 0.1).empty());
+}
+
+TEST(ApuOutput, ItMakes48000StereoSamplesPerSecondExactly) {
+    Apu apu = fresh_apu();
+    apu.set_output_enabled(true);
+    EXPECT_EQ(run_for_samples(apu, 1.0).size(), 2U * Apu::kSampleRate);
+    // And the same again, with no drift from the first second.
+    EXPECT_EQ(run_for_samples(apu, 1.0).size(), 2U * Apu::kSampleRate);
+}
+
+// The tone test (agreed in review): channel 1 at a known period must come
+// out at the matching frequency, 131072 / (2048 - period) Hz.
+TEST(ApuOutput, ATonePlayedOnChannelOneComesOutAtItsFrequency) {
+    for (const auto& [period, hertz] : {std::pair{1792, 512}, std::pair{1024, 128}}) {
+        Apu apu = fresh_apu();
+        apu.write(kNr50, 0x77);
+        apu.write(kNr51, 0xFF);
+        apu.set_output_enabled(true);
+        start_square(apu, 0, 2, static_cast<std::uint16_t>(period));
+        (void)run_for_samples(apu, 0.5);  // let the high-pass filter settle
+        const auto samples = run_for_samples(apu, 1.0);
+        EXPECT_NEAR(rising_crossings(samples), hertz, 1) << "period " << period;
+    }
+}
+
+// The amplitude tests (agreed in review).
+TEST(ApuOutput, WithEveryDacOffTheOutputIsExactlySilent) {
+    Apu apu = fresh_apu();
+    apu.write(kNr50, 0x77);
+    apu.write(kNr51, 0xFF);
+    apu.set_output_enabled(true);
+    for (const float sample : run_for_samples(apu, 0.2)) {
+        ASSERT_EQ(sample, 0.0F);
+    }
+}
+
+TEST(ApuOutput, ADacLeftOnWithNothingPlayingSettlesToSilence) {
+    Apu apu = fresh_apu();
+    apu.write(kNr50, 0x77);
+    apu.write(kNr51, 0xFF);
+    apu.set_output_enabled(true);
+    apu.write(kNr12, 0xF0);  // channel 1's DAC on, channel off: a constant level
+    const auto first = run_for_samples(apu, 0.001);
+    // The DAC's offset comes through at first: one channel at its lowest
+    // level (-1) at NR50 volume 8 is -1 * 8 / 32; the three DACs that are
+    // off add nothing.
+    EXPECT_NEAR(first.at(0), -0.25F, 0.01F);
+    (void)run_for_samples(apu, 1.0);
+    for (const float sample : run_for_samples(apu, 0.1)) {
+        ASSERT_NEAR(sample, 0.0F, 0.001F);  // the high-pass filter has removed it
+    }
+}
+
+TEST(ApuOutput, Nr51RoutesEachChannelAndNr50ScalesEachSide) {
+    // Channel 1 at full volume and duty 3 (75 % high). Left only, then right
+    // only, then both, then NR50 left 7, right 0.
+    struct Case {
+        std::uint8_t nr51;
+        std::uint8_t nr50;
+        bool left_has_sound;
+        bool right_has_sound;
+        float right_to_left;  // ratio of amplitudes when both have sound
+    };
+    for (const Case& c :
+         {Case{0x10, 0x77, true, false, 0.0F}, Case{0x01, 0x77, false, true, 0.0F},
+          Case{0x11, 0x77, true, true, 1.0F}, Case{0x11, 0x70, true, true, 0.125F}}) {
+        Apu apu = fresh_apu();
+        apu.write(kNr50, c.nr50);
+        apu.write(kNr51, c.nr51);
+        apu.set_output_enabled(true);
+        start_square(apu, 0, 3, 1792);
+        (void)run_for_samples(apu, 0.5);
+        const auto samples = run_for_samples(apu, 0.1);
+        float left_peak = 0;
+        float right_peak = 0;
+        for (std::size_t i = 0; i < samples.size(); i += 2) {
+            left_peak = std::max(left_peak, std::fabs(samples[i]));
+            right_peak = std::max(right_peak, std::fabs(samples[i + 1]));
+        }
+        EXPECT_EQ(left_peak > 0.01F, c.left_has_sound) << "NR51 " << int{c.nr51};
+        EXPECT_EQ(right_peak > 0.01F, c.right_has_sound) << "NR51 " << int{c.nr51};
+        if (c.left_has_sound && c.right_has_sound) {
+            EXPECT_NEAR(right_peak / left_peak, c.right_to_left, 0.01F) << "NR50 " << int{c.nr50};
+        }
+    }
+}
+
+TEST(ApuOutput, TheLoudestMixStaysWithinMinusOneToOne) {
+    Apu apu = fresh_apu();
+    apu.write(kNr50, 0x77);
+    apu.write(kNr51, 0xFF);
+    apu.set_output_enabled(true);
+    start_square(apu, 0, 3, 2047);
+    start_square(apu, 1, 3, 2047);
+    for (std::uint16_t i = 0; i < 16; ++i) {
+        apu.write(kWave + i, 0xFF);
+    }
+    start_wave(apu, 2047);
+    start_noise(apu, 0x00);
+    for (const float sample : run_for_samples(apu, 0.5)) {
+        ASSERT_LE(std::fabs(sample), 1.0F);
+    }
+}
+
+TEST(ApuOutput, SamplesNobodyTakesAreDroppedAfterASecond) {
+    Apu apu = fresh_apu();
+    apu.set_output_enabled(true);
+    for (std::uint64_t t = 0; t < std::uint64_t{3} * kTicksPerSecond; t += 4) {
+        apu.tick(4);
+    }
+    EXPECT_EQ(apu.dropped_samples(), 2U * Apu::kSampleRate);
+    std::vector<float> out;
+    apu.take_samples(out);
+    EXPECT_EQ(out.size(), 2U * Apu::kSampleRate);
 }
 
 }  // namespace

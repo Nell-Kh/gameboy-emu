@@ -1,8 +1,11 @@
 // The SDL2 window: the only file in the project that knows about SDL.
 //
 // Each loop iteration handles input, runs the machine for one frame, shows
-// that frame and then waits until the next one is due, so the game runs at the
-// Game Boy's 59.73 frames per second (ADR-016).
+// that frame and queues its sound. With an audio device the queue sets the
+// pace: a frame runs only while less than 50 ms of sound is waiting, so the
+// game runs at the sound card's clock (ADR-025). Without one the loop waits
+// for the wall clock instead, at the Game Boy's 59.73 frames per second
+// (ADR-016).
 
 #include "app/sdl_frontend.h"
 
@@ -14,9 +17,11 @@
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include "app/dpad.h"
 #include "app/state_file.h"
+#include "core/apu.h"
 #include "core/joypad.h"
 
 namespace frontend {
@@ -46,6 +51,68 @@ struct SdlDeleter {
     void operator()(SDL_Texture* texture) const noexcept {
         SDL_DestroyTexture(texture);
     }
+};
+
+// The audio device, opened paused and fed through SDL's queue. Playback
+// starts once kTargetQueuedBytes are waiting, so it never starts on an empty
+// queue; after that, finding the queue empty means the device ran dry (an
+// underrun, heard as a crackle), which is counted.
+class AudioOut {
+public:
+    static constexpr std::uint32_t kTargetQueuedMs = 50;
+    // 50 ms of stereo float samples, in bytes.
+    static constexpr std::uint32_t kTargetQueuedBytes = core::Apu::kSampleRate * kTargetQueuedMs /
+                                                        1000 * 2 *
+                                                        static_cast<std::uint32_t>(sizeof(float));
+
+    AudioOut() noexcept {
+        if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
+            return;
+        }
+        SDL_AudioSpec want{};
+        want.freq = static_cast<int>(core::Apu::kSampleRate);
+        want.format = AUDIO_F32SYS;
+        want.channels = 2;
+        want.samples = 512;
+        SDL_AudioSpec have{};
+        device_ = SDL_OpenAudioDevice(nullptr, 0, &want, &have, 0);  // SDL converts if needed
+    }
+    AudioOut(const AudioOut&) = delete;
+    AudioOut& operator=(const AudioOut&) = delete;
+    AudioOut(AudioOut&&) = delete;
+    AudioOut& operator=(AudioOut&&) = delete;
+    ~AudioOut() {
+        if (device_ != 0) {
+            SDL_CloseAudioDevice(device_);
+        }
+    }
+
+    [[nodiscard]] bool ok() const noexcept {
+        return device_ != 0;
+    }
+    // True while enough sound is queued that the machine should wait.
+    [[nodiscard]] bool full() const noexcept {
+        return SDL_GetQueuedAudioSize(device_) >= kTargetQueuedBytes;
+    }
+    void queue(const std::vector<float>& samples) noexcept {
+        if (started_ && SDL_GetQueuedAudioSize(device_) == 0) {
+            ++underruns_;
+        }
+        SDL_QueueAudio(device_, samples.data(),
+                       static_cast<Uint32>(samples.size() * sizeof(float)));
+        if (!started_ && full()) {
+            SDL_PauseAudioDevice(device_, 0);
+            started_ = true;
+        }
+    }
+    [[nodiscard]] std::uint64_t underruns() const noexcept {
+        return underruns_;
+    }
+
+private:
+    SDL_AudioDeviceID device_ = 0;
+    bool started_ = false;
+    std::uint64_t underruns_ = 0;
 };
 
 // SDL_Init in the constructor, SDL_Quit in the destructor.
@@ -233,17 +300,41 @@ int run_window(core::GameBoy& gb, const WindowOptions& options, BatterySaver* sa
         return kExitSdlError;
     }
 
+    std::optional<AudioOut> audio;
+    if (!options.mute) {
+        audio.emplace();
+        if (!audio->ok()) {
+            std::cerr << "gameboy-emu: no sound: cannot open an audio device: " << SDL_GetError()
+                      << "\n";
+            audio.reset();
+        }
+    }
+    gb.set_audio_enabled(audio.has_value());
+
     const std::uint64_t counts_per_second = SDL_GetPerformanceFrequency();
     const std::uint64_t counts_per_frame =
         counts_per_second * core::GameBoy::kTicksPerFrame / core::GameBoy::kTicksPerSecond;
-    std::uint64_t next_frame = SDL_GetPerformanceCounter();
+    const std::uint64_t started = SDL_GetPerformanceCounter();
+    std::uint64_t next_frame = started;
+    std::uint64_t frames = 0;
 
     Session session(gb, options.state_path);
     std::array<std::uint32_t, static_cast<std::size_t>(kWidth) * kHeight> pixels{};
+    std::vector<float> samples;
     while (session.handle_events()) {
+        if (audio && audio->full()) {
+            SDL_Delay(1);  // the sound card is behind; let it catch up
+            continue;
+        }
         gb.run_frame();
+        ++frames;
         if (saver != nullptr) {
             saver->tick(BatterySaver::Clock::now());
+        }
+        if (audio) {
+            samples.clear();
+            gb.take_audio(samples);
+            audio->queue(samples);
         }
 
         const core::Ppu::Frame& frame = gb.frame();
@@ -255,6 +346,9 @@ int run_window(core::GameBoy& gb, const WindowOptions& options, BatterySaver* sa
         SDL_RenderCopy(renderer.get(), texture.get(), nullptr, nullptr);
         SDL_RenderPresent(renderer.get());
 
+        if (audio) {
+            continue;  // the audio queue paces the loop
+        }
         next_frame += counts_per_frame;
         const std::uint64_t now = SDL_GetPerformanceCounter();
         if (now < next_frame) {
@@ -262,6 +356,12 @@ int run_window(core::GameBoy& gb, const WindowOptions& options, BatterySaver* sa
         } else if (now - next_frame > kMaxFramesBehind * counts_per_frame) {
             next_frame = now;
         }
+    }
+    if (audio) {
+        // How well the pacing worked: 0 underruns is "no crackle" (ADR-025).
+        const std::uint64_t seconds = (SDL_GetPerformanceCounter() - started) / counts_per_second;
+        std::cerr << "gameboy-emu: audio: " << audio->underruns() << " underruns in " << frames
+                  << " frames (" << seconds << " s)\n";
     }
     return kExitOk;
 }

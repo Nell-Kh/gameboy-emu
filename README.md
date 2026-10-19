@@ -16,9 +16,10 @@ Libbet and the Magic Floor runs; see [docs/accuracy.md](docs/accuracy.md) for wh
 the background, window and objects, and ROMs run in an SDL window with keyboard input. M4 complete
 (`v0.4.0`): MBC3 with its real-time clock and MBC5, battery saves in `game.sav`, and save states
 on F5 / F8. Blargg's `cpu_instrs`, `instr_timing` and `mem_timing`, 81 Mooneye tests, and
-dmg-acid2, mbc3-tester and the three rtc3test subtests (pixel-identical) pass in CI. There is no
-sound yet, and cartridges with no mapper, MBC1, MBC3 or MBC5 load; see
-[docs/accuracy.md](docs/accuracy.md) for exactly what is and is not covered.
+dmg-acid2, mbc3-tester and the three rtc3test subtests (pixel-identical) pass in CI. M5, sound, is
+in progress: all twelve of Blargg's `dmg_sound` tests pass, and the window plays sound. Cartridges
+with no mapper, MBC1, MBC3 or MBC5 load; see [docs/accuracy.md](docs/accuracy.md) for exactly what
+is and is not covered.
 
 ## Build and test
 
@@ -62,8 +63,10 @@ Escape closes the window. `--scale N` sets the window size to N times 160x144 (d
 window can also be resized. Games with battery saves keep them, and the cartridge clock if there
 is one, in a `.sav` file next to the ROM, written when the window closes and while you play. F5
 saves the whole machine to a `.state` file next to the ROM and F8 loads it back; there is one
-state per ROM, and a state in another format version or for another ROM is refused. Bring your
-own ROM: none is included.
+state per ROM, and a state in another format version or for another ROM is refused. Sound plays
+through the default audio device, which also sets the game's pace; `--mute` turns it off (the
+clock then sets the pace). On exit the window prints how many audio underruns there were: 0 means
+no crackle. Bring your own ROM: none is included.
 
 ## Run a test ROM
 

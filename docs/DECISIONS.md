@@ -206,6 +206,8 @@ record that supersedes the old one, not by editing history.
 
 ## ADR-016: The window runs whole frames, paced by the wall clock
 
+- **Status:** Superseded by ADR-025 whenever an audio device is open. Still the pacing with
+  `--mute`, with no audio device, and in the app-smoke CI job.
 - **Context:** The Game Boy draws 59.73 frames per second; most monitors refresh at 60 Hz or more.
   Showing the frame buffer at an arbitrary moment would mix lines of two frames. M5 adds sound,
   which will need its own clock.
@@ -323,4 +325,44 @@ record that supersedes the old one, not by editing history.
   pinned. They are relative to this emulator's access point and need not match numbers other
   emulators quote for the same effects; if the CPU's access timing model ever changes, the
   search has to be run again. Like ADR-017, they are derived from tests, not documentation.
+
+## ADR-024: Sound output is 48 kHz stereo from a box filter and a high-pass filter
+
+- **Status:** Accepted in review (`docs/apu-notes.md`, sections 7 and 10).
+- **Context:** The four channels change level at up to 1 MHz; a sound card wants a fixed sample
+  rate. The simplest correct way down is to average the level over each sample (a box filter);
+  the proper way is band-limited synthesis (as in `blip_buf`), which keeps the square channels'
+  high harmonics from folding back as aliasing.
+- **Decision:** The core mixes to 48 000 stereo samples per second: each DAC gives -1 to 1, NR51
+  routes it, NR50 scales each side, the sum is scaled so the loudest mix is 1, each sample is the
+  average level over its exact stretch of clock ticks (time is counted in units that make the
+  arithmetic exact, so there is no drift), and a high-pass filter like the output capacitor
+  removes the constant offset a DAC leaves. The output is not part of the machine's state. A tone
+  test (the frequency of the real output) and amplitude tests (exact silence with every DAC off;
+  a DAC left on settles to silence) check it.
+- **Consequences:** Aliasing on the square channels at high notes is accepted for M5; band-limited
+  synthesis is the planned v1.1 upgrade and changes only `Apu::produce_samples`. The frontend
+  gets samples it can hand to any audio API.
+
+## ADR-025: The window is paced by the audio queue
+
+- **Status:** Accepted in review (`docs/apu-notes.md`, section 7); supersedes ADR-016 while an
+  audio device is open.
+- **Context:** The sound card has its own clock. Paced by the wall clock (ADR-016), the emulator
+  makes exactly 48 000 samples per emulated second while the card plays at its own 48 000, and
+  the two drift apart: the queue slowly fills or runs dry, and correcting it means dropping or
+  repeating samples (crackle) or nudging the rate (pitch wobble). The user can hear drift against
+  the sound card; nothing else in the program can be heard.
+- **Decision:** With an audio device open, the loop runs a frame only while less than 50 ms of
+  sound is queued and sleeps a millisecond otherwise; the picture follows the sound. Playback
+  starts once 50 ms is queued, never on an empty queue. The loop counts underruns (the queue found
+  empty after that) and prints the count, with the frame count and run time, on exit, so "no
+  crackle" is a number. With `--mute`, with no audio device, and in the app-smoke CI job (which
+  passes `--mute`, so the save-on-signal timing does not depend on the dummy audio driver), the
+  wall-clock pacing of ADR-016 stays.
+- **Consequences:** Sound and picture cannot drift apart, and a stall needs no catch-up logic:
+  the queue just refills. The game runs at the sound card's rate, which is within a fraction of
+  a percent of nominal on any real card. The M5 exit requires the counter at zero over five
+  minutes of Libbet; the dummy driver in CI drains its queue at real time too, so the pacing
+  also works there.
 

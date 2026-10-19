@@ -83,7 +83,9 @@ def main() -> None:
         env = dict(os.environ, SDL_VIDEODRIVER="dummy", SDL_AUDIODRIVER="dummy")
         env.pop("SDL_NO_SIGNAL_HANDLERS", None)
         deadline = time.monotonic() + TIMEOUT_SECONDS
-        app_process = subprocess.Popen([app, str(rom_path)], env=env)
+        # --mute keeps the loop on wall-clock pacing (ADR-025), so the save
+        # timing below does not depend on the dummy audio driver.
+        app_process = subprocess.Popen([app, "--mute", str(rom_path)], env=env)
 
         # The first save is written in the first frames, with only the marker.
         while not save_path.exists():

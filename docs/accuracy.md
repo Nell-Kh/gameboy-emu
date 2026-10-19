@@ -280,8 +280,8 @@ that is a bug in this document.
   possible mix is 1, each sample is the average level over its stretch of clock ticks (a box
   filter, so high notes alias; band-limited synthesis is the planned v1.1 upgrade), and a
   high-pass filter like the output capacitor removes the constant offset a DAC leaves. A tone test
-  checks the frequency of the real output and amplitude tests check silence. Nothing reaches the
-  speakers yet; that is the next M5 step. A
+  checks the frequency of the real output and amplitude tests check silence (ADR-024). The
+  window plays it through the default audio device and is paced by its queue (ADR-025). A
   trigger keeps a square channel's duty step and power-off resets it to 0. The channel timers
   run only while the channel is on (choice: what they do while it is off is not documented and
   only shows as where a later trigger starts). The wave channel's three DMG timings (the first
@@ -294,9 +294,12 @@ that is a bug in this document.
   later in M5 (docs/apu-notes.md, section 8).
 - **LCD off:** the frame goes blank (shade 0) while the LCD is off. On hardware the screen is
   then a little lighter than shade 0.
-- **Frontend:** the window runs one whole frame at a time and paces itself to 59.73 frames per
-  second (ADR-016). Input is read once per frame, so a key press reaches the game up to one frame
-  later than on hardware.
+- **Frontend:** the window runs one whole frame at a time. With sound it is paced by the audio
+  queue, so the game runs at the sound card's clock, within a fraction of a percent of 59.73
+  frames per second (ADR-025); with `--mute` or no audio device it paces itself to 59.73 by the
+  wall clock (ADR-016). Input is read once per frame, so a key press reaches the game up to one
+  frame later than on hardware. About 50 ms of sound is queued ahead, so sound lags the picture
+  by that much.
 - **Save states:** one per ROM, `game.state` next to it, F5 to save and F8 to load (ADR-020).
   A state stores everything the machine needs to continue identically (checked by the
   determinism tests), but not the serial output text, which is a test aid. A load gives the game

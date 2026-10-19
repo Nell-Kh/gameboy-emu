@@ -49,17 +49,20 @@ struct Options {
     bool trace = false;
     bool headless_only_option = false;  // --max-seconds or --trace was given
     bool scale_given = false;
+    bool mute = false;
 };
 
 void print_usage(std::ostream& out) {
     out << "gameboy-emu " << core::GameBoy::version() << "\n"
         << "\n"
-        << "Usage: gameboy-emu ROM [--scale N]\n"
+        << "Usage: gameboy-emu ROM [--scale N] [--mute]\n"
         << "       gameboy-emu --headless ROM [--max-seconds N] [--trace]\n"
         << "\n"
         << "  ROM              play ROM in a window\n"
         << "  --scale N        window size as a multiple of 160x144 (default " << kDefaultScale
         << ")\n"
+        << "  --mute           no sound; the game is then paced by the clock, not the\n"
+        << "                   audio device\n"
         << "\n"
         << "  Keys: arrows = d-pad, X = A, Z = B, Enter = Start, Backspace = Select,\n"
         << "        Esc = quit\n"
@@ -109,8 +112,8 @@ bool options_fit(const Options& options, std::ostream& err) {
         err << "gameboy-emu: --max-seconds and --trace need --headless\n";
         return false;
     }
-    if (options.headless && options.scale_given) {
-        err << "gameboy-emu: --scale has no effect with --headless\n";
+    if (options.headless && (options.scale_given || options.mute)) {
+        err << "gameboy-emu: --scale and --mute have no effect with --headless\n";
         return false;
     }
     if (options.rom_path.empty()) {
@@ -130,6 +133,8 @@ std::optional<Options> parse_arguments(std::span<const std::string_view> args, s
         } else if (arg == "--trace") {
             options.trace = true;
             options.headless_only_option = true;
+        } else if (arg == "--mute") {
+            options.mute = true;
         } else if (arg == "--scale") {
             const auto scale = option_value(args, i, err);
             if (!scale) {
@@ -329,7 +334,8 @@ int main(int argc, char** argv) {
         frontend::run_window(gb,
                              {.title = name + " - gameboy-emu",
                               .scale = options->scale,
-                              .state_path = frontend::state_path_for(options->rom_path)},
+                              .state_path = frontend::state_path_for(options->rom_path),
+                              .mute = options->mute},
                              &saver);
     saver.flush();
     return status;

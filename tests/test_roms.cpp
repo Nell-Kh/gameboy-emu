@@ -18,6 +18,7 @@
 #include "app/ram_verdict.h"
 #include "core/gameboy.h"
 #include "core/registers.h"
+#include "screenshot.h"
 
 namespace {
 
@@ -129,8 +130,6 @@ TEST_P(BlarggSoundRom, ReportsPassedInCartridgeRam) {
     EXPECT_TRUE(result.passed()) << "status " << int{result.status} << ":\n" << result.text;
 }
 
-// The three wave-RAM tests (09, 10, 12) come with the wave channel's 2 MHz
-// timing, a later M5 step (docs/apu-notes.md, section 9).
 INSTANTIATE_TEST_SUITE_P(
     DmgSound, BlarggSoundRom,
     testing::Values(Rom{"01_registers", "01-registers.gb"}, Rom{"02_len_ctr", "02-len ctr.gb"},
@@ -139,8 +138,25 @@ INSTANTIATE_TEST_SUITE_P(
                     Rom{"06_overflow_on_trigger", "06-overflow on trigger.gb"},
                     Rom{"07_len_sweep_period_sync", "07-len sweep period sync.gb"},
                     Rom{"08_len_ctr_during_power", "08-len ctr during power.gb"},
-                    Rom{"11_regs_after_power", "11-regs after power.gb"}),
+                    Rom{"09_wave_read_while_on", "09-wave read while on.gb"},
+                    Rom{"10_wave_trigger_while_on", "10-wave trigger while on.gb"},
+                    Rom{"11_regs_after_power", "11-regs after power.gb"},
+                    Rom{"12_wave_write_while_on", "12-wave write while on.gb"}),
     [](const testing::TestParamInfo<Rom>& info) { return std::string(info.param.test_name); });
+
+// The combined dmg_sound ROM runs all twelve and then repeats them, so it
+// never reports in RAM; c-sp's how-to gives 36 emulated seconds and a
+// reference screenshot of the screen it shows (made with SameBoy).
+TEST(DmgSoundCombined, ScreenMatchesTheReference) {
+    const std::string dir = std::string(GB_CSP_DIR) + "/blargg/dmg_sound";
+    const std::vector<std::uint8_t> rom = read_rom(dir + "/dmg_sound.gb");
+    ASSERT_FALSE(rom.empty()) << "cannot read " << dir << "/dmg_sound.gb";
+    core::GameBoy gb;
+    ASSERT_EQ(gb.load_rom(rom), "");
+    gb.run_for(36 * core::GameBoy::kTicksPerSecond);
+    EXPECT_FALSE(gb.cpu().locked());
+    EXPECT_TRUE(test::matches_screenshot(gb.frame(), dir + "/dmg_sound-dmg.png"));
+}
 
 // --- Mooneye Test Suite -------------------------------------------------
 //

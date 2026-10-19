@@ -508,4 +508,153 @@ TEST(ApuNoise, TheOutputIsTheEnvelopeVolume) {
     EXPECT_EQ(apu.output(3), 9);
 }
 
+// --- The wave channel (docs/apu-notes.md, sections 5 and 6) ---
+
+constexpr std::uint16_t kNr32 = 0xFF1C;
+constexpr std::uint16_t kNr33 = 0xFF1D;
+constexpr std::uint16_t kWave = 0xFF30;
+
+// Fills wave RAM with 0x01, 0x23, ... 0xEF: samples 0, 1, 2, ... 15, twice.
+void load_counting_wave(Apu& apu) {
+    for (std::uint16_t i = 0; i < 16; ++i) {
+        apu.write(kWave + i, static_cast<std::uint8_t>(((2 * i) % 16) << 4U | ((2 * i + 1) % 16)));
+    }
+}
+
+// Starts the wave channel at full volume with the given 11-bit period.
+void start_wave(Apu& apu, std::uint16_t period, std::uint8_t volume_code = 1) {
+    apu.write(kNr30, 0x80);
+    apu.write(kNr32, static_cast<std::uint8_t>(volume_code << 5U));
+    apu.write(kNr33, static_cast<std::uint8_t>(period));
+    apu.write(kNr34, static_cast<std::uint8_t>(kTrigger | ((period >> 8U) & 0x07)));
+}
+
+// With period 2046 a sample lasts 4 clock ticks; the first fetch after a
+// trigger comes one sample plus 4 ticks later (ADR-023).
+constexpr std::uint32_t kSampleTicks = 4;
+constexpr std::uint32_t kFirstFetch = kSampleTicks + 4;
+
+TEST(ApuWave, ItPlaysWaveRamFromSampleOneHighNibbleFirst) {
+    Apu apu = fresh_apu();
+    load_counting_wave(apu);
+    start_wave(apu, 2046);
+    apu.tick(kFirstFetch);  // the first fetch: position 1, byte 0
+    std::vector<std::uint8_t> out;
+    for (int i = 0; i < 6; ++i) {
+        out.push_back(apu.output(2));
+        apu.tick(kSampleTicks);
+    }
+    EXPECT_EQ(out, (std::vector<std::uint8_t>{1, 2, 3, 4, 5, 6}));
+}
+
+TEST(ApuWave, ATriggerPlaysTheSampleAlreadyFetchedFirst) {
+    Apu apu = fresh_apu();
+    load_counting_wave(apu);
+    start_wave(apu, 2046);
+    apu.tick(kFirstFetch + 2 * kSampleTicks);  // position 3: byte 1 (0x23) fetched
+    ASSERT_EQ(apu.output(2), 3);
+    apu.write(kNr34, kTrigger | 0x07);  // retrigger (not near a fetch: no corruption)
+    EXPECT_EQ(apu.output(2), 2);        // position 0: the high nibble of the old byte
+}
+
+TEST(ApuWave, TheVolumeCodeShiftsTheSample) {
+    // Code 0 mutes; 1, 2, 3 shift right by 0, 1, 2. Sample 1 at position 1
+    // after the first fetch; use a wave of all 0xFF to see the shifts.
+    for (const auto& [code, expected] :
+         {std::pair{0, 0}, std::pair{1, 15}, std::pair{2, 7}, std::pair{3, 3}}) {
+        Apu apu = fresh_apu();
+        for (std::uint16_t i = 0; i < 16; ++i) {
+            apu.write(kWave + i, 0xFF);
+        }
+        start_wave(apu, 2046, static_cast<std::uint8_t>(code));
+        apu.tick(kFirstFetch);
+        EXPECT_EQ(apu.output(2), expected) << "code " << code;
+    }
+}
+
+TEST(ApuWave, ThePeriodSetsTheFrequency) {
+    // 65536 / (2048 - period) Hz for the 32-sample wave: period 1536 gives
+    // 128 Hz. One rising edge per cycle with a wave of 16 zeros, 16 fifteens.
+    Apu apu = fresh_apu();
+    for (std::uint16_t i = 0; i < 16; ++i) {
+        apu.write(kWave + i, i < 8 ? 0x00 : 0xFF);
+    }
+    start_wave(apu, 1536);
+    int edges = 0;
+    std::uint8_t last = apu.output(2);
+    for (std::uint32_t t = 0; t < kTicksPerSecond; t += 4) {
+        apu.tick(4);
+        const std::uint8_t now = apu.output(2);
+        edges += (last == 0 && now != 0) ? 1 : 0;
+        last = now;
+    }
+    EXPECT_NEAR(edges, 128, 1);
+}
+
+TEST(ApuWave, WaveRamIsPlainMemoryWhileTheChannelIsOff) {
+    Apu apu = fresh_apu();
+    apu.write(kWave + 5, 0xA5);
+    EXPECT_EQ(apu.read(kWave + 5), 0xA5);
+}
+
+// While the channel plays, every wave RAM address means the byte the channel
+// is playing, and only right after a fetch (ADR-023); otherwise reads give
+// 0xFF and writes are lost.
+TEST(ApuWave, WhilePlayingTheCpuReachesOnlyTheCurrentByteRightAfterAFetch) {
+    Apu apu = fresh_apu();
+    load_counting_wave(apu);
+    start_wave(apu, 2046);
+    apu.tick(kFirstFetch + kSampleTicks);  // the fetch for position 2 (byte 1) just happened
+    EXPECT_EQ(apu.read(kWave + 9), 0xFF);  // 0 ticks after the fetch: not yet
+    apu.tick(2);
+    EXPECT_EQ(apu.read(kWave + 5), 0x23);  // 2 ticks after: byte 1, not byte 5 (0xAB)
+    apu.write(kWave + 12, 0x77);           // lands on byte 1
+    apu.tick(1);
+    EXPECT_EQ(apu.read(kWave + 9), 0xFF);  // 3 ticks after: gone again
+    apu.write(kWave + 12, 0x99);           // lost
+    apu.write(kNr30, 0x00);                // stop the channel to look at the RAM
+    EXPECT_EQ(apu.read(kWave + 1), 0x77);
+    EXPECT_EQ(apu.read(kWave + 12), 0x89);
+}
+
+// A retrigger 4 ticks before a fetch rewrites the start of wave RAM from the
+// byte at the current position (ADR-023). Wave RAM holds 0x00, 0x11, ... 0xFF
+// so every byte is different.
+TEST(ApuWave, ARetriggerJustBeforeAFetchCorruptsTheStartOfWaveRam) {
+    struct Case {
+        std::uint32_t samples_played;  // after the first fetch, at position 1
+        std::vector<std::uint8_t> first_four;
+    };
+    // Position 5 is byte 2, one of bytes 0-3: only byte 0 is rewritten.
+    // Position 9 is byte 4: bytes 0-3 become bytes 4-7. Position 21 is byte
+    // 10: bytes 0-3 become bytes 8-11.
+    for (const Case& c : {Case{4, {0x22, 0x11, 0x22, 0x33}}, Case{8, {0x44, 0x55, 0x66, 0x77}},
+                          Case{20, {0x88, 0x99, 0xAA, 0xBB}}}) {
+        Apu apu = fresh_apu();
+        for (std::uint16_t i = 0; i < 16; ++i) {
+            apu.write(kWave + i, static_cast<std::uint8_t>(i * 0x11));
+        }
+        start_wave(apu, 2046);
+        apu.tick(kFirstFetch + c.samples_played * kSampleTicks);  // the timer is now at 4
+        apu.write(kNr34, kTrigger | 0x07);
+        apu.write(kNr30, 0x00);
+        std::vector<std::uint8_t> first_four;
+        for (std::uint16_t i = 0; i < 4; ++i) {
+            first_four.push_back(apu.read(kWave + i));
+        }
+        EXPECT_EQ(first_four, c.first_four) << "after " << c.samples_played << " samples";
+    }
+}
+
+TEST(ApuWave, ARetriggerAtAnyOtherMomentLeavesWaveRamAlone) {
+    Apu apu = fresh_apu();
+    load_counting_wave(apu);
+    start_wave(apu, 2046);
+    apu.tick(kFirstFetch + 8 * kSampleTicks + 1);  // position 9, but the timer is at 3
+    apu.write(kNr34, kTrigger | 0x07);
+    apu.write(kNr30, 0x00);
+    EXPECT_EQ(apu.read(kWave + 0), 0x01);
+    EXPECT_EQ(apu.read(kWave + 3), 0x67);
+}
+
 }  // namespace

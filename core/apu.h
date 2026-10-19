@@ -9,8 +9,7 @@ namespace core {
 // The audio processing unit (docs/apu-notes.md): sound registers 0xFF10-0xFF26
 // and wave RAM 0xFF30-0xFF3F, the 512 Hz frame sequencer, and per channel the
 // on/off state, length counter, volume envelope, (channel 1) frequency sweep
-// and, for the square and noise channels, the waveform. The wave channel and
-// the mixed output come in later M5 steps.
+// and the four waveforms. The mixed output comes in a later M5 step.
 //
 // Channels are numbered 0-3 here (Pan Docs' channels 1-4): 0 and 1 are the
 // square channels, 2 the wave channel, 3 the noise channel.
@@ -45,8 +44,9 @@ public:
 
     // A channel's digital output, 0-15, which its DAC turns into a level:
     // for a square channel the current duty step (0 or 1) times its volume,
-    // for the noise channel the inverted low bit of its shift register times
-    // its volume. 0 while the channel is off.
+    // for the wave channel the current 4-bit sample shifted by its volume
+    // code, for the noise channel the inverted low bit of its shift register
+    // times its volume. 0 while the channel is off.
     [[nodiscard]] std::uint8_t output(int channel) const noexcept;
 
     // For tests and, later, the mixer.
@@ -98,6 +98,16 @@ private:
     // clock shift (14 or 15) stops it.
     [[nodiscard]] std::uint32_t noise_period() const noexcept;
     void tick_noise(std::uint32_t t_cycles) noexcept;
+    // Clock ticks per wave sample: (2048 - period) * 2.
+    [[nodiscard]] std::uint32_t wave_period() const noexcept;
+    void tick_wave(std::uint32_t t_cycles) noexcept;
+    // On the DMG the CPU reaches wave RAM while channel 3 plays only in the
+    // moment the channel fetches a sample (docs/apu-notes.md, section 6).
+    [[nodiscard]] bool wave_ram_reachable() const noexcept;
+    // The wave RAM byte channel 3 is playing from.
+    [[nodiscard]] std::size_t wave_byte() const noexcept;
+    // A CPU write to 0xFF30-0xFF3F.
+    void write_wave_ram(std::uint16_t address, std::uint8_t value) noexcept;
 
     std::array<std::uint8_t, kRegisterCount> registers_{};
     std::array<std::uint8_t, 16> wave_ram_{};
@@ -113,6 +123,11 @@ private:
 
     // Channel 4's linear feedback shift register, 15 bits.
     std::uint16_t lfsr_ = 0x7FFF;
+
+    // Channel 3: the byte fetched from wave RAM (its two samples play in
+    // turn), and the clock ticks since that fetch.
+    std::uint8_t wave_sample_ = 0;
+    std::uint32_t since_wave_fetch_ = 0xFFFF;
 };
 
 }  // namespace core

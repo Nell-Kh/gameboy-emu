@@ -1,5 +1,7 @@
 #include "core/apu.h"
 
+#include <algorithm>
+
 namespace core {
 
 namespace {
@@ -18,6 +20,7 @@ constexpr std::uint16_t kLengthOffset = 1;    // NRx1
 constexpr std::uint16_t kEnvelopeOffset = 2;  // NRx2
 constexpr std::uint16_t kControlOffset = 4;   // NRx4
 constexpr int kWaveChannel = 2;
+constexpr std::uint8_t kOpenBus = 0xFF;
 
 // Bits that read as 1 whatever was written, for 0xFF10-0xFF25: unused,
 // write-only, and the unused addresses 0xFF15 and 0xFF1F.
@@ -62,6 +65,23 @@ constexpr std::uint16_t kNr43 = 0xFF22;
 constexpr std::uint16_t kLfsrFull = 0x7FFF;
 constexpr std::uint8_t kNoiseShortModeBit = 0x08;  // NR43 bit 3: 7-bit LFSR
 constexpr std::uint8_t kNoiseStoppedShift = 14;    // clock shifts 14 and 15 stop it
+
+constexpr std::uint16_t kNr32 = 0xFF1C;
+constexpr std::uint8_t kWaveSamples = 32;  // two per wave RAM byte
+constexpr std::uint32_t kWaveTicksPerSample = 2;
+constexpr std::uint32_t kNotFetched = 0xFFFF;
+
+// Three timings of the wave channel, in clock ticks, found by testing every
+// combination against Blargg's dmg_sound 09, 10 and 12 (ADR-023): the only
+// one that passes all three.
+//  - The first fetch after a trigger comes this long after one sample period.
+constexpr std::uint32_t kWaveTriggerDelay = 4;
+//  - While the channel plays, the CPU reaches wave RAM only when its access
+//    comes this long after a fetch (the access lands at the end of the CPU's
+//    machine cycle in this emulator, ADR-005).
+constexpr std::uint32_t kWaveReachableAfterFetch = 2;
+//  - A retrigger corrupts wave RAM when the next fetch is this far away.
+constexpr std::uint32_t kWaveCorruptBeforeFetch = 4;
 
 constexpr std::uint16_t full_length(int channel) noexcept {
     return channel == kWaveChannel ? 256 : 64;
@@ -147,6 +167,9 @@ bool Apu::next_step_skips_length() const noexcept {
 
 std::uint8_t Apu::read(std::uint16_t address) const noexcept {
     if (address >= kWaveRamStart) {
+        if (channels_[kWaveChannel].on) {
+            return wave_ram_reachable() ? wave_ram_.at(wave_byte()) : kOpenBus;
+        }
         return wave_ram_.at(address - kWaveRamStart);
     }
     if (address == kNr52) {
@@ -162,9 +185,17 @@ std::uint8_t Apu::read(std::uint16_t address) const noexcept {
     return registers_.at(index) | kReadMask.at(index);
 }
 
+void Apu::write_wave_ram(std::uint16_t address, std::uint8_t value) noexcept {
+    if (!channels_[kWaveChannel].on) {
+        wave_ram_.at(address - kWaveRamStart) = value;
+    } else if (wave_ram_reachable()) {
+        wave_ram_.at(wave_byte()) = value;
+    }
+}
+
 void Apu::write(std::uint16_t address, std::uint8_t value) noexcept {
     if (address >= kWaveRamStart) {
-        wave_ram_.at(address - kWaveRamStart) = value;
+        write_wave_ram(address, value);
         return;
     }
     if (address == kNr52) {
@@ -239,6 +270,27 @@ void Apu::write_control(int channel, std::uint8_t value) noexcept {
 
 void Apu::trigger(int channel) noexcept {
     Channel& c = channels_.at(static_cast<std::size_t>(channel));
+    if (channel == kWaveChannel) {
+        // Retriggering on the DMG just before the channel fetches a sample
+        // overwrites the start of wave RAM from the byte at its current
+        // position: just the first byte if that is one of bytes 0-3,
+        // otherwise all four bytes of its aligned group (docs/apu-notes.md,
+        // section 6).
+        if (c.on && c.timer == kWaveCorruptBeforeFetch) {
+            const std::size_t byte = wave_byte();
+            if (byte < 4) {
+                wave_ram_[0] = wave_ram_.at(byte);
+            } else {
+                const std::size_t group = byte & ~std::size_t{3};
+                std::copy_n(wave_ram_.begin() + static_cast<std::ptrdiff_t>(group), 4,
+                            wave_ram_.begin());
+            }
+        }
+        // The position restarts, but the sample already fetched plays first.
+        c.position = 0;
+        c.timer = wave_period() + kWaveTriggerDelay;
+        since_wave_fetch_ = kNotFetched;
+    }
     if (c.length == 0) {
         c.length = full_length(channel);
         if (c.length_enabled && next_step_skips_length()) {
@@ -286,6 +338,8 @@ void Apu::power_off() noexcept {
     sweep_timer_ = 0;
     sweep_enabled_ = false;
     sweep_negated_ = false;
+    wave_sample_ = 0;
+    since_wave_fetch_ = kNotFetched;
 }
 
 void Apu::step_frame_sequencer() noexcept {
@@ -390,7 +444,44 @@ void Apu::tick(std::uint32_t t_cycles) noexcept {
     }
     tick_square(0, t_cycles);
     tick_square(1, t_cycles);
+    tick_wave(t_cycles);
     tick_noise(t_cycles);
+}
+
+std::uint32_t Apu::wave_period() const noexcept {
+    return (kPeriodRange - square_period(kWaveChannel)) * kWaveTicksPerSample;
+}
+
+std::size_t Apu::wave_byte() const noexcept {
+    return channels_[kWaveChannel].position / 2U;
+}
+
+bool Apu::wave_ram_reachable() const noexcept {
+    return since_wave_fetch_ == kWaveReachableAfterFetch;
+}
+
+// Each timer expiry moves to the next sample and fetches its byte from wave
+// RAM; the clock ticks since the last fetch decide whether the CPU can reach
+// wave RAM (wave_ram_reachable).
+void Apu::tick_wave(std::uint32_t t_cycles) noexcept {
+    Channel& c = channels_[kWaveChannel];
+    if (!c.on) {
+        return;
+    }
+    bool fetched = false;
+    while (t_cycles >= c.timer) {
+        t_cycles -= c.timer;
+        c.timer = wave_period();
+        c.position = (c.position + 1) % kWaveSamples;
+        wave_sample_ = wave_ram_.at(wave_byte());
+        fetched = true;
+    }
+    c.timer -= t_cycles;
+    if (fetched) {
+        since_wave_fetch_ = t_cycles;
+    } else if (since_wave_fetch_ < kNotFetched) {
+        since_wave_fetch_ = std::min(since_wave_fetch_ + t_cycles, kNotFetched);
+    }
 }
 
 // The timer counts down (2048 - period) * 4 clock ticks per duty step. A new
@@ -447,8 +538,16 @@ void Apu::tick_noise(std::uint32_t t_cycles) noexcept {
 
 std::uint8_t Apu::output(int channel) const noexcept {
     const Channel& c = channels_.at(static_cast<std::size_t>(channel));
-    if (!c.on || channel == kWaveChannel) {
+    if (!c.on) {
         return 0;
+    }
+    if (channel == kWaveChannel) {
+        // Even positions play the high nibble. Volume code 0 mutes, 1-3
+        // shift right by 0, 1 or 2.
+        constexpr std::array<std::uint8_t, 4> kShift = {4, 0, 1, 2};
+        const std::uint8_t sample =
+            (c.position % 2U) == 0 ? (wave_sample_ >> 4U) : (wave_sample_ & 0x0FU);
+        return sample >> kShift.at((reg(kNr32) >> 5U) & 3U);
     }
     if (channel == kNoiseChannel) {
         return (lfsr_ & 1U) == 0 ? c.volume : 0;

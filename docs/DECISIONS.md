@@ -302,3 +302,25 @@ record that supersedes the old one, not by editing history.
   `01`, as on hardware). On a ROM over 2 MiB the 8-bit register is intended, not a bug: changing
   it back to 7 bits fails `mbc3-tester`. A plain MBC3 ROM over 2 MiB would be a bad dump, since
   the chip cannot address it.
+
+## ADR-023: The wave channel's DMG timings come from dmg_sound 09, 10 and 12
+
+- **Context:** On the DMG, while channel 3 plays, the CPU reaches wave RAM only at the moment the
+  channel fetches a sample, and a retrigger at the wrong moment corrupts wave RAM
+  (docs/apu-notes.md, section 6). Blargg's `09-wave read while on`, `10-wave trigger while on`
+  and `12-wave write while on` measure this in steps of 2 clock ticks, 69 runs each, checked by a
+  CRC of everything they read. The sources at hand describe the effects but not the offsets
+  relative to this emulator's CPU access point, which is the end of each machine cycle
+  (ADR-005).
+- **Decision:** Three timings, in clock ticks: the first fetch after a trigger comes one sample
+  period plus 4; the CPU reaches wave RAM when its access comes 2 ticks after a fetch; a
+  retrigger corrupts wave RAM when the next fetch is 4 ticks away. They were found by running
+  the three tests for every combination of trigger delay 0-20, access window start 0-4 and
+  length 1-3 (09 and 12), then corruption offset 0-10 (with 09 and 12 passing). This is the only
+  combination that passes all three.
+- **Consequences:** All twelve `dmg_sound` tests and the combined ROM's screenshot pass. Moving
+  any of the three by 2 ticks fails at least one of the tests (checked by mutation), so they are
+  pinned. They are relative to this emulator's access point and need not match numbers other
+  emulators quote for the same effects; if the CPU's access timing model ever changes, the
+  search has to be run again. Like ADR-017, they are derived from tests, not documentation.
+

@@ -55,7 +55,10 @@ reads that verdict too.
 | `06-overflow on trigger` | the overflow check run on trigger | Passed |
 | `07-len sweep period sync` | the length and sweep periods follow the frame sequencer | Passed |
 | `08-len ctr during power` | on the DMG, length counters keep their values through power off and can be written while off | Passed |
+| `09-wave read while on` | reading wave RAM while channel 3 plays gives the byte it is playing only right after a fetch, else `FF` | Passed |
+| `10-wave trigger while on` | retriggering channel 3 just before a fetch corrupts the start of wave RAM | Passed |
 | `11-regs after power` | powering off clears every register | Passed |
+| `12-wave write while on` | writing wave RAM while channel 3 plays lands on the byte it is playing only right after a fetch | Passed |
 
 [Mooneye Test Suite](https://github.com/Gekkio/mooneye-test-suite), prebuilt, from
 [c-sp/game-boy-test-roms](https://github.com/c-sp/game-boy-test-roms) release `v7.0`:
@@ -108,7 +111,9 @@ shades 0-3. `mbc3-tester`, from the same collection, never stops; its frame is c
 `mbc3-tester-dmg.png` after 60 frames (c-sp's notes say the result is final after 40).
 `rtc3test` has three subtests picked on a menu; each test presses the buttons from c-sp's how-to
 (held 5 frames, 20 frames apart, from frame 60), runs for the subtest's time plus 2 emulated
-seconds, and compares the screen with its reference:
+seconds, and compares the screen with its reference. Blargg's combined `dmg_sound` repeats its
+tests forever; it runs for c-sp's 36 emulated seconds and is compared with `dmg_sound-dmg.png`
+(made with SameBoy):
 
 | ROM | What it covers | Result |
 |---|---|---|
@@ -116,6 +121,7 @@ seconds, and compares the screen with its reference:
 | `mbc3-tester` | MBC3 ROM banking: all 256 banks of a 4 MiB ROM (the MBC30's 8-bit bank register, ADR-022) | Pixel-identical |
 | `rtc3test` basic tests (A) | the clock starts, ticks every 1000 ms (±1 ms), stops while halted, reads back writes, rolls over into day 256, sets and keeps the day carry | Pixel-identical |
 | `rtc3test` range tests (Down, A) | which bits of each clock register exist; invalid seconds, minutes and hours count on and wrap without a carry | Pixel-identical |
+| `dmg_sound` (combined) | all twelve `dmg_sound` tests in one run, as shown on screen | Pixel-identical |
 | `rtc3test` sub-second writes (Down, Down, A) | writing the seconds restarts the second in progress, writing the other registers does not, and halting pauses it (±1.5 ms) | Pixel-identical |
 
 To reproduce one by hand:
@@ -125,7 +131,7 @@ To reproduce one by hand:
 ```
 
 These ROMs have no pass or fail verdict the emulator can read; they are checked by the
-`DmgAcid2`, `Mbc3Tester` and `Rtc3Test` tests in `rom_tests`, which on a mismatch save the frame
+`DmgAcid2`, `Mbc3Tester`, `Rtc3Test` and `DmgSoundCombined` tests in `rom_tests`, which on a mismatch save the frame
 as `<reference>-actual.png` next to the reference and print the first differing pixel.
 
 ## Games checked by hand
@@ -160,9 +166,6 @@ provide.
   - Both `lcdon` tests state their own cause: on the first line after the LCD is switched on the
     PPU runs 2 dots late. That line starts in mode 0 here as on hardware, but the 2-dot lateness is
     not modelled; that is the likely cause of both mismatches, not yet confirmed.
-- `dmg_sound` `09-wave read while on`, `10-wave trigger while on`, `12-wave write while on`: they
-  need the wave channel's timing to the 2 MHz tick, a later M5 step (docs/apu-notes.md, section
-  6); they run and report a failure. The combined `dmg_sound` ROM is not run yet either.
 
 ## Known simplifications
 
@@ -269,16 +272,20 @@ that is a bug in this document.
 - **I/O registers:** joypad, serial, timer, interrupt, sound and all LCD registers
   (`FF40`-`FF4B`) are emulated. Addresses with no register read `0xFF`.
 - **Sound (M5, in progress):** the registers, NR52 power, the frame sequencer, length counters,
-  envelopes and channel 1's sweep are emulated, and the two square channels (duty pattern,
-  period, volume) and the noise channel (15- and 7-bit shift register, divisor and clock shift)
-  play their waveforms, checked by unit tests; the wave channel and the sound output are not done
-  yet. A trigger keeps a square channel's duty step and power-off resets it to 0. The square and
-  noise timers run only while the channel is on (choice: what they do while it is off is not
-  documented and only shows as where a later trigger starts). At power-on the
-  sound registers hold the DMG boot ROM's values, channel 1 is marked on with its volume at 0 (the
-  volume the boot sound ends on is not documented), wave RAM is zero (random on hardware) and the
-  frame sequencer's next step is 0. Save states do not include the APU yet; it gets its own
-  section, and the format version 2, later in M5 (docs/apu-notes.md, section 8).
+  envelopes, channel 1's sweep and all four waveforms are emulated: the square channels (duty
+  pattern, period, volume), the wave channel (32 four-bit samples, volume code) and the noise
+  channel (15- and 7-bit shift register, divisor and clock shift), checked by unit tests and all
+  twelve `dmg_sound` tests. The sound output (mixing, NR50/NR51, filtering) is not done yet. A
+  trigger keeps a square channel's duty step and power-off resets it to 0. The channel timers
+  run only while the channel is on (choice: what they do while it is off is not documented and
+  only shows as where a later trigger starts). The wave channel's three DMG timings (the first
+  fetch after a trigger, when the CPU can reach wave RAM while it plays, when a retrigger
+  corrupts wave RAM) were found by searching against `dmg_sound` 09, 10 and 12 (ADR-023). At
+  power-on the sound registers hold the DMG boot ROM's values, channel 1 is marked on with its
+  volume at 0 (the volume the boot sound ends on is not documented), wave RAM and the wave
+  channel's fetched byte are zero (random on hardware) and the frame sequencer's next step is 0.
+  Save states do not include the APU yet; it gets its own section, and the format version 2,
+  later in M5 (docs/apu-notes.md, section 8).
 - **LCD off:** the frame goes blank (shade 0) while the LCD is off. On hardware the screen is
   then a little lighter than shade 0.
 - **Frontend:** the window runs one whole frame at a time and paces itself to 59.73 frames per

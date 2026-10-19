@@ -42,6 +42,21 @@ constexpr std::uint8_t kSquareLengthBits = 0x3F;
 constexpr std::uint8_t kMaxVolume = 15;
 constexpr std::uint16_t kMaxPeriod = 2047;
 
+constexpr std::uint16_t kPeriodLowOffset = 3;     // NRx3
+constexpr std::uint8_t kDutyShift = 6;            // NRx1 bits 6-7
+constexpr std::uint32_t kSquareTicksPerStep = 4;  // per unit of (2048 - period)
+constexpr std::uint16_t kPeriodRange = 2048;
+constexpr std::uint8_t kDutySteps = 8;
+
+// The four duty patterns, one bit per step, step 0 in bit 0 (Pan Docs):
+// 12.5 %, 25 %, 50 %, 75 %.
+constexpr std::array<std::uint8_t, 4> kDutyPatterns = {
+    0b1000'0000,  // 0 0 0 0 0 0 0 1
+    0b1000'0001,  // 1 0 0 0 0 0 0 1
+    0b1110'0001,  // 1 0 0 0 0 1 1 1
+    0b0111'1110,  // 0 1 1 1 1 1 1 0
+};
+
 constexpr std::uint16_t full_length(int channel) noexcept {
     return channel == kWaveChannel ? 256 : 64;
 }
@@ -97,6 +112,12 @@ std::uint8_t Apu::volume(int channel) const noexcept {
 
 std::uint16_t Apu::square1_period() const noexcept {
     return static_cast<std::uint16_t>(reg(kNr13) | ((reg(kNr14) & kPeriodBits) << 8U));
+}
+
+std::uint16_t Apu::square_period(int channel) const noexcept {
+    const std::uint16_t base = kChannelBase.at(static_cast<std::size_t>(channel));
+    return static_cast<std::uint16_t>(reg(base + kPeriodLowOffset) |
+                                      ((reg(base + kControlOffset) & kPeriodBits) << 8U));
 }
 
 void Apu::set_square1_period(std::uint16_t period) noexcept {
@@ -219,6 +240,10 @@ void Apu::trigger(int channel) noexcept {
         }
     }
     c.on = dac_on(channel);
+    if (channel < kWaveChannel) {
+        // The duty step is not reset; only the timer is reloaded.
+        c.timer = (kPeriodRange - square_period(channel)) * kSquareTicksPerStep;
+    }
     if (channel != kWaveChannel) {
         const std::uint8_t envelope =
             reg(kChannelBase.at(static_cast<std::size_t>(channel)) + kEnvelopeOffset);
@@ -347,6 +372,42 @@ std::uint16_t Apu::sweep_calculate() noexcept {
         channels_[0].on = false;
     }
     return period;
+}
+
+void Apu::tick(std::uint32_t t_cycles) noexcept {
+    if (!powered_) {
+        return;
+    }
+    tick_square(0, t_cycles);
+    tick_square(1, t_cycles);
+}
+
+// The timer counts down (2048 - period) * 4 clock ticks per duty step. A new
+// period takes effect when the timer next reloads. The timer only runs while
+// the channel is on (choice: what it does while off is not documented, and
+// shows only as the duty step a later trigger starts from).
+void Apu::tick_square(int channel, std::uint32_t t_cycles) noexcept {
+    Channel& c = channels_.at(static_cast<std::size_t>(channel));
+    if (!c.on) {
+        return;
+    }
+    while (t_cycles >= c.timer) {
+        t_cycles -= c.timer;
+        c.timer = (kPeriodRange - square_period(channel)) * kSquareTicksPerStep;
+        c.position = (c.position + 1) % kDutySteps;
+    }
+    c.timer -= t_cycles;
+}
+
+std::uint8_t Apu::output(int channel) const noexcept {
+    const Channel& c = channels_.at(static_cast<std::size_t>(channel));
+    if (!c.on || channel >= kWaveChannel) {
+        return 0;
+    }
+    const std::uint8_t duty =
+        reg(kChannelBase.at(static_cast<std::size_t>(channel)) + kLengthOffset) >> kDutyShift;
+    const bool high = ((kDutyPatterns.at(duty) >> c.position) & 1U) != 0;
+    return high ? c.volume : 0;
 }
 
 }  // namespace core

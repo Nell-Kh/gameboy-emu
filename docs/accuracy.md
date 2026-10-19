@@ -269,7 +269,11 @@ that is a bug in this document.
 - **I/O registers:** joypad, serial, timer, interrupt, sound and all LCD registers
   (`FF40`-`FF4B`) are emulated. Addresses with no register read `0xFF`.
 - **Sound (M5, in progress):** the registers, NR52 power, the frame sequencer, length counters,
-  envelopes and channel 1's sweep are emulated; no waveform or sound output yet. At power-on the
+  envelopes and channel 1's sweep are emulated, and the two square channels play their waveform
+  (duty pattern, period, volume), checked by unit tests; the wave and noise channels and the
+  sound output are not done yet. A trigger keeps a square channel's duty step and power-off
+  resets it to 0; its period timer runs only while the channel is on (choice: what it does while
+  the channel is off is not documented and only shows as the step a later trigger starts from). At power-on the
   sound registers hold the DMG boot ROM's values, channel 1 is marked on with its volume at 0 (the
   volume the boot sound ends on is not documented), wave RAM is zero (random on hardware) and the
   frame sequencer's next step is 0. Save states do not include the APU yet; it gets its own

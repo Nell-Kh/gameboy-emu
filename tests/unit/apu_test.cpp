@@ -6,7 +6,10 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstdint>
+#include <utility>
+#include <vector>
 
 namespace {
 
@@ -275,6 +278,123 @@ TEST(Apu, NothingIsClockedWhilePoweredOff) {
         apu.step_frame_sequencer();
     }
     EXPECT_EQ(apu.length_counter(0), 4);
+}
+
+// --- The square channels (docs/apu-notes.md, section 5) ---
+
+constexpr std::uint16_t kNr21 = 0xFF16;
+constexpr std::uint16_t kNr22 = 0xFF17;
+constexpr std::uint16_t kNr23 = 0xFF18;
+constexpr std::uint16_t kNr24 = 0xFF19;
+constexpr std::uint32_t kTicksPerSecond = 4'194'304;
+
+// Starts square channel `channel` (0 or 1) at full volume with the given
+// duty (0-3) and period.
+void start_square(Apu& apu, int channel, std::uint8_t duty, std::uint16_t period,
+                  std::uint8_t volume = 15) {
+    const std::uint16_t nr1 = channel == 0 ? kNr11 : kNr21;
+    const std::uint16_t nr2 = channel == 0 ? kNr12 : kNr22;
+    const std::uint16_t nr3 = channel == 0 ? kNr13 : kNr23;
+    const std::uint16_t nr4 = channel == 0 ? kNr14 : kNr24;
+    apu.write(nr1, static_cast<std::uint8_t>(duty << 6U));
+    apu.write(nr2, static_cast<std::uint8_t>(volume << 4U));
+    apu.write(nr3, static_cast<std::uint8_t>(period));
+    apu.write(nr4, static_cast<std::uint8_t>(kTrigger | ((period >> 8U) & 0x07)));
+}
+
+// The channel's output at each of the next `steps` duty steps, for period
+// 2047, where one step is 4 clock ticks.
+std::vector<std::uint8_t> sample_steps(Apu& apu, int channel, int steps) {
+    std::vector<std::uint8_t> out;
+    for (int i = 0; i < steps; ++i) {
+        out.push_back(apu.output(channel));
+        apu.tick(4);
+    }
+    return out;
+}
+
+TEST(ApuSquare, EachDutyPatternPlaysItsEightSteps) {
+    const std::array<std::vector<std::uint8_t>, 4> expected = {{
+        {0, 0, 0, 0, 0, 0, 0, 15},       // 12.5 %
+        {15, 0, 0, 0, 0, 0, 0, 15},      // 25 %
+        {15, 0, 0, 0, 0, 15, 15, 15},    // 50 %
+        {0, 15, 15, 15, 15, 15, 15, 0},  // 75 %
+    }};
+    for (const int channel : {0, 1}) {
+        for (std::uint8_t duty = 0; duty < 4; ++duty) {
+            Apu apu = fresh_apu();  // the duty step starts at 0
+            start_square(apu, channel, duty, 2047);
+            EXPECT_EQ(sample_steps(apu, channel, 8), expected.at(duty))
+                << "channel " << channel << ", duty " << int{duty};
+        }
+    }
+}
+
+// Counts how often the output goes from 0 to above 0 in one emulated second.
+int rising_edges_in_a_second(Apu& apu, int channel) {
+    int edges = 0;
+    std::uint8_t last = apu.output(channel);
+    for (std::uint32_t t = 0; t < kTicksPerSecond; t += 4) {
+        apu.tick(4);
+        const std::uint8_t now = apu.output(channel);
+        if (last == 0 && now != 0) {
+            ++edges;
+        }
+        last = now;
+    }
+    return edges;
+}
+
+TEST(ApuSquare, ThePeriodSetsTheFrequency) {
+    // 131072 / (2048 - period) Hz: period 1792 gives 512 Hz, 1024 gives 128 Hz.
+    for (const auto& [period, hertz] : {std::pair{1792, 512}, std::pair{1024, 128}}) {
+        Apu apu = fresh_apu();
+        start_square(apu, 1, 2, static_cast<std::uint16_t>(period));
+        EXPECT_NEAR(rising_edges_in_a_second(apu, 1), hertz, 1) << "period " << period;
+    }
+}
+
+TEST(ApuSquare, TheOutputIsTheEnvelopeVolume) {
+    Apu apu = fresh_apu();
+    start_square(apu, 0, 3, 2047, 7);
+    EXPECT_EQ(sample_steps(apu, 0, 8), (std::vector<std::uint8_t>{0, 7, 7, 7, 7, 7, 7, 0}));
+}
+
+TEST(ApuSquare, AChannelThatIsOffOutputsZero) {
+    Apu apu = fresh_apu();
+    start_square(apu, 0, 3, 2047);
+    apu.tick(4);
+    ASSERT_EQ(apu.output(0), 15);
+    apu.write(kNr12, 0x00);  // DAC off
+    EXPECT_EQ(apu.output(0), 0);
+    apu.write(kNr52, 0x00);
+    EXPECT_EQ(apu.output(1), 0);
+}
+
+TEST(ApuSquare, ATriggerKeepsTheDutyStepButPowerOffResetsIt) {
+    Apu apu = fresh_apu();
+    start_square(apu, 0, 2, 2047);
+    apu.tick(4 * 5);  // at step 5
+    start_square(apu, 0, 2, 2047);
+    EXPECT_EQ(sample_steps(apu, 0, 3), (std::vector<std::uint8_t>{15, 15, 15}));  // steps 5-7
+
+    apu.write(kNr52, 0x00);
+    apu.write(kNr52, 0x80);
+    start_square(apu, 0, 2, 2047);
+    EXPECT_EQ(sample_steps(apu, 0, 2), (std::vector<std::uint8_t>{15, 0}));  // steps 0-1
+}
+
+TEST(ApuSquare, ANewPeriodTakesEffectAtTheNextStep) {
+    Apu apu = fresh_apu();
+    start_square(apu, 1, 2, 1024);  // 4096 ticks per step
+    apu.write(kNr23, 0xFF);
+    apu.write(kNr24, 0x07);  // period 2047, no trigger
+    apu.tick(4095);
+    EXPECT_EQ(apu.output(1), 15);  // still step 0
+    apu.tick(1);                   // step 1, and from now on 4 ticks per step
+    EXPECT_EQ(apu.output(1), 0);
+    apu.tick(4 * 4);  // step 5
+    EXPECT_EQ(apu.output(1), 15);
 }
 
 }  // namespace

@@ -8,8 +8,9 @@ namespace core {
 
 // The audio processing unit (docs/apu-notes.md): sound registers 0xFF10-0xFF26
 // and wave RAM 0xFF30-0xFF3F, the 512 Hz frame sequencer, and per channel the
-// on/off state, length counter, volume envelope and (channel 1) frequency
-// sweep. The waveforms and the mixed output come in later M5 steps.
+// on/off state, length counter, volume envelope, (channel 1) frequency sweep
+// and, for the square channels, the waveform. The wave and noise channels and
+// the mixed output come in later M5 steps.
 //
 // Channels are numbered 0-3 here (Pan Docs' channels 1-4): 0 and 1 are the
 // square channels, 2 the wave channel, 3 the noise channel.
@@ -38,6 +39,15 @@ public:
     // edge of DIV bit 4 (512 times a second), so a DIV write can clock it.
     void step_frame_sequencer() noexcept;
 
+    // Runs the channels' period timers for `t_cycles` clock ticks; the bus
+    // calls this as time passes, like the timer's.
+    void tick(std::uint32_t t_cycles) noexcept;
+
+    // A channel's digital output, 0-15, which its DAC turns into a level:
+    // for a square channel the current duty step (0 or 1) times its volume.
+    // 0 while the channel is off.
+    [[nodiscard]] std::uint8_t output(int channel) const noexcept;
+
     // For tests and, later, the mixer.
     [[nodiscard]] bool powered() const noexcept {
         return powered_;
@@ -56,6 +66,8 @@ private:
         std::uint16_t length = 0;  // counts down to 0; 64 or 256 steps
         std::uint8_t volume = 0;   // 0-15, from the envelope (not channel 3)
         std::uint8_t envelope_timer = 0;
+        std::uint32_t timer = 0;    // clock ticks until the next waveform step
+        std::uint8_t position = 0;  // the step within the waveform: duty step 0-7
     };
 
     // Offsets of the registers from 0xFF10.
@@ -78,6 +90,9 @@ private:
     // channel off if it is above 2047.
     std::uint16_t sweep_calculate() noexcept;
     void set_square1_period(std::uint16_t period) noexcept;
+    // The 11-bit period of a square channel (0 or 1), from NRx3 and NRx4.
+    [[nodiscard]] std::uint16_t square_period(int channel) const noexcept;
+    void tick_square(int channel, std::uint32_t t_cycles) noexcept;
 
     std::array<std::uint8_t, kRegisterCount> registers_{};
     std::array<std::uint8_t, 16> wave_ram_{};

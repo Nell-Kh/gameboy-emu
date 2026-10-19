@@ -222,6 +222,7 @@ void Bus::tick(std::uint32_t t_cycles) noexcept {
     if (frame_sequencer_bit && !timer_.frame_sequencer_bit()) {
         apu_.step_frame_sequencer();
     }
+    apu_.tick(t_cycles);
     if (serial_.tick(t_cycles)) {
         request_interrupt(Interrupt::Serial);
     }

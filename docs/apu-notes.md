@@ -204,6 +204,13 @@ the combined ROM matches its screenshot, in CI; the tone and amplitude tests pas
 save states with the determinism tests covering sound; and by hand, Libbet's music plays in the
 window for 5 minutes with the underrun counter at zero.
 
+**As built (v0.5.0):** all of the above in CI (689 tests). By hand, on a MacBook Air with a
+browser, a video and an IDE open: Libbet's demo for 7 minutes, `audio: 0 underruns in 25280
+frames (423 s)`. Two things had to be fixed on the way to zero, both found by the per-underrun
+report: the core made no samples while a game had the APU powered off, so the paced loop ran dry
+and unpaced; and SDL's default text input sent every key press through macOS's input-method
+framework, whose set-up on the first key press stalled the loop for longer than the 50 ms queue.
+
 ## 10. Decisions from review
 
 1. **Pacing:** audio sets the pace, about 50 ms queued, with an underrun counter; wall-clock

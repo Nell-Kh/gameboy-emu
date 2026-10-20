@@ -15,11 +15,12 @@ Libbet and the Magic Floor runs; see [docs/accuracy.md](docs/accuracy.md) for wh
 **Status:** CPU, timing, memory and MBC1 complete (`v0.2.0`). M3 complete (`v0.3.0`): the PPU draws
 the background, window and objects, and ROMs run in an SDL window with keyboard input. M4 complete
 (`v0.4.0`): MBC3 with its real-time clock and MBC5, battery saves in `game.sav`, and save states
-on F5 / F8. Blargg's `cpu_instrs`, `instr_timing` and `mem_timing`, 81 Mooneye tests, and
-dmg-acid2, mbc3-tester and the three rtc3test subtests (pixel-identical) pass in CI. M5, sound, is
-in progress: all twelve of Blargg's `dmg_sound` tests pass, and the window plays sound. Cartridges
-with no mapper, MBC1, MBC3 or MBC5 load; see [docs/accuracy.md](docs/accuracy.md) for exactly what
-is and is not covered.
+on F5 / F8. M5 complete (`v0.5.0`): all four sound channels, played through the audio device,
+which also paces the game; save states include the sound state (format version 2). Blargg's
+`cpu_instrs`, `instr_timing`, `mem_timing` and all twelve `dmg_sound` tests, 81 Mooneye tests, and
+dmg-acid2, mbc3-tester, the three rtc3test subtests and the combined `dmg_sound` screen
+(pixel-identical) pass in CI. Cartridges with no mapper, MBC1, MBC3 or MBC5 load; see
+[docs/accuracy.md](docs/accuracy.md) for exactly what is and is not covered.
 
 ## Build and test
 

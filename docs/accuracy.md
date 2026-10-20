@@ -271,7 +271,7 @@ that is a bug in this document.
   after a crash that time is made up, and the clock comes back closer to real time.
 - **I/O registers:** joypad, serial, timer, interrupt, sound and all LCD registers
   (`FF40`-`FF4B`) are emulated. Addresses with no register read `0xFF`.
-- **Sound (M5, in progress):** the registers, NR52 power, the frame sequencer, length counters,
+- **Sound (M5, `v0.5.0`):** the registers, NR52 power, the frame sequencer, length counters,
   envelopes, channel 1's sweep and all four waveforms are emulated: the square channels (duty
   pattern, period, volume), the wave channel (32 four-bit samples, volume code) and the noise
   channel (15- and 7-bit shift register, divisor and clock shift), checked by unit tests and all

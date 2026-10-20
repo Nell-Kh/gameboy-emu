@@ -1,5 +1,6 @@
-// Cartridge test ROMs checked by screenshot (docs/cartridge-notes.md,
-// section 8), in shades against the reference images in c-sp's collection.
+// Test ROMs that only draw their result, checked by screenshot in shades
+// against the reference images in c-sp's collection: the cartridge ROMs
+// (docs/cartridge-notes.md, section 8) and Blargg's halt_bug.
 
 #include <gtest/gtest.h>
 
@@ -31,6 +32,20 @@ TEST(Mbc3Tester, AllBanksAreTickedOff) {
     }
     EXPECT_FALSE(gb.cpu().locked());
     EXPECT_TRUE(test::matches_screenshot(gb.frame(), dir + "/mbc3-tester-dmg.png"));
+}
+
+// Blargg's halt_bug only draws its result: HALT with interrupts disabled and
+// one pending must read the byte after it twice. c-sp's how-to gives it 2
+// emulated seconds; the reference is the same for the DMG and the Color.
+TEST(HaltBug, ScreenMatchesTheReference) {
+    const std::string dir = std::string(GB_CSP_DIR) + "/blargg";
+    const std::vector<std::uint8_t> rom = test::read_file(dir + "/halt_bug.gb");
+    ASSERT_FALSE(rom.empty()) << "cannot read " << dir << "/halt_bug.gb";
+    GameBoy gb;
+    ASSERT_EQ(gb.load_rom(rom), "");
+    gb.run_for(2 * GameBoy::kTicksPerSecond);
+    EXPECT_FALSE(gb.cpu().locked());
+    EXPECT_TRUE(test::matches_screenshot(gb.frame(), dir + "/halt_bug-dmg-cgb.png"));
 }
 
 // rtc3test (aaaaaa123456789) checks the MBC3 clock against the Game Boy's own

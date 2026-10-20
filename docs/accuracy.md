@@ -1,10 +1,49 @@
 # Accuracy
 
-What has been checked against real-hardware test ROMs, and what is known to be simplified.
-Everything in the tables under "Test ROMs that pass" runs in CI on every push (gcc and clang on Linux, clang on macOS,
-with AddressSanitizer and UndefinedBehaviorSanitizer). The window itself runs in CI only with
-SDL's dummy drivers, in one job that checks the save file is written when the app gets SIGTERM
-or SIGINT (ADR-021); everything else about the real window is checked by hand.
+What peasoup has been checked against, what does not pass and why, and what is simplified. It
+emulates the original Game Boy (DMG) only.
+
+Everything under "Test ROMs that pass" runs in CI on every push: gcc and clang on Linux, clang on
+macOS, with AddressSanitizer and UndefinedBehaviorSanitizer. A ROM passes by its own verdict
+(serial output, the registers at its breakpoint, or a status byte in cartridge RAM) or, for ROMs
+that only draw their result, by a pixel-identical screen. The window itself runs in CI only with
+SDL's dummy drivers, in one job that checks the save file is written when the app gets SIGTERM or
+SIGINT (ADR-021); everything else about the real window is checked by hand.
+
+## Summary
+
+| Source | ROMs in CI | Pass | Not in CI, and why |
+|---|---|---|---|
+| Blargg `cpu_instrs` | 12 (11 singles, 1 combined) | 12 | |
+| Blargg `instr_timing` | 1 | 1 | |
+| Blargg `mem_timing` and `mem_timing-2` | 8 (3 singles, 1 combined, each) | 8 | |
+| Blargg `halt_bug` | 1 (screen) | 1 | |
+| Blargg `dmg_sound` | 13 (12 singles, 1 combined screen) | 13 | |
+| Blargg `oam_bug` | 0 | | 8 singles: 3 pass by hand, 5 need the OAM corruption bug, not modelled |
+| Blargg `interrupt_time`, `cgb_sound` | 0 | | Game Boy Color only |
+| Mooneye `acceptance` | 61 | 61 | 14: other models' boot state (9), DMG boot state (2), LCD-on timing (2), serial clock phase (1); see below |
+| Mooneye `emulator-only` | 20 | 20 | 8: MBC2 (7) and the MBC1 multicart (1), not supported |
+| Mooneye `misc`, `madness`, `manual-only` | 0 | | Color, Advance and other models, or checked by eye on hardware |
+| `dmg-acid2` | 1 (screen) | 1 | |
+| `mbc3-tester` | 1 (screen) | 1 | |
+| `rtc3test` | 3 (screen) | 3 | |
+| **Total** | **121** | **121** | |
+
+Mooneye's 81, by folder:
+
+| Folder | In CI and passing | In the folder |
+|---|---|---|
+| `acceptance` (top level) | 30 | 41 |
+| `acceptance/bits` | 3 | 3 |
+| `acceptance/instr` | 1 | 1 |
+| `acceptance/interrupts` | 1 | 1 |
+| `acceptance/oam_dma` | 3 | 3 |
+| `acceptance/ppu` | 10 | 12 |
+| `acceptance/serial` | 0 | 1 |
+| `acceptance/timer` | 13 | 13 |
+| `emulator-only/mbc1` | 12 | 13 |
+| `emulator-only/mbc2` | 0 | 7 |
+| `emulator-only/mbc5` | 8 | 8 |
 
 ## Test ROMs that pass
 
@@ -40,6 +79,16 @@ Blargg's timing ROMs, from the same repository:
 | `mem_timing/01-read_timing` | the machine cycle in which each instruction reads memory | Passed |
 | `mem_timing/02-write_timing` | the machine cycle in which each instruction writes memory | Passed |
 | `mem_timing/03-modify_timing` | the read and the write of read-modify-write instructions | Passed |
+
+Blargg's `mem_timing-2` (the later version of `mem_timing`, the combined ROM and its three
+singles) and `halt_bug`, from the c-sp `v7.0` collection. `mem_timing-2` reports in cartridge
+RAM at `A000`, like the sound tests below. `halt_bug` only draws its result; it runs for c-sp's 2
+emulated seconds and its screen is compared with `halt_bug-dmg-cgb.png`:
+
+| ROM | What it covers | Result |
+|---|---|---|
+| `mem_timing-2/mem_timing` and its three `rom_singles` | the same as `mem_timing`, rewritten | Passed |
+| `halt_bug` | HALT with IME off and an interrupt pending: the next byte is read twice | Pixel-identical |
 
 Blargg's sound tests, `dmg_sound/rom_singles` from the c-sp `v7.0` collection. They report in
 cartridge RAM at `A000` rather than over serial (docs/apu-notes.md, section 2); `--headless`
@@ -140,32 +189,48 @@ Not run in CI: these were run by hand and the screen was checked by eye.
 
 | Game | What was checked | Result |
 |---|---|---|
-| [Libbet and the Magic Floor](https://github.com/pinobatch/libbet) v0.08 (zlib licence), built from source at commit `1232e71` with RGBDS 1.0.4 | title and story screens; the built-in demo; on macOS with the keyboard: rolling, jumping (A + d-pad), finishing floors and moving on to the next, the progress counter. Start does nothing during a floor, as in the game's source (it has no pause). | Plays correctly, without sound |
+| [Libbet and the Magic Floor](https://github.com/pinobatch/libbet) v0.08 (zlib licence), built from source at commit `1232e71` with RGBDS 1.0.4 | title and story screens; the built-in demo; on macOS with the keyboard: rolling, jumping (A + d-pad), finishing floors and moving on to the next, the progress counter. Start does nothing during a floor, as in the game's source (it has no pause). | Plays correctly, with sound: the demo ran 7 minutes with 0 audio underruns |
 
 Tetris was not checked: it needs a ROM of the commercial game, which this project does not
 provide.
 
-## Not yet tested in CI
+## Not passing
 
-- `emulator-only/mbc1/multicart_rom_8Mb`: MBC1 multicarts (MBC1M) wire the bank register
+Every test ROM in the collections above that is not in CI, run by hand, with its cause.
+
+**Not modelled, so these fail:**
+
+- Blargg `oam_bug`: `2-causes`, `4-scanline_timing`, `5-timing_bug`, `7-timing_effect` and
+  `8-instr_effect` fail; `1-lcd_sync`, `3-non_causes` and `6-timing_no_bug` pass. The DMG corrupts
+  OAM when the CPU puts an address in `FE00`-`FEFF` on the bus during mode 2 (INC/DEC of a
+  register pair among others); peasoup does not model that corruption, which games avoid.
+- Mooneye `ppu/lcdon_timing-GS`: LY matches throughout. The first mismatch is the LYC = LY bit in
+  STAT at machine cycle `$6F` after the LCD is switched on: expected clear (`$80`), ours set
+  (`$84`).
+- Mooneye `ppu/lcdon_write_timing-GS`: at machine cycle `$83` after the LCD is switched on an OAM
+  write should go through (`$81`); ours is blocked (`$00`).
+- Both `lcdon` tests state their own cause: on the first line after the LCD is switched on the
+  PPU runs 2 dots late. That line starts in mode 0 here as on hardware, but the 2-dot lateness is
+  not modelled; that is the likely cause of both mismatches, not yet confirmed.
+- Mooneye `boot_div-dmgABCmgb` and `boot_hwio-dmgABCmgb`: the exact DIV phase and the I/O
+  register values the boot ROM leaves behind are not modelled (execution starts at `0x0100` with
+  the registers the boot ROM leaves, `boot_regs-dmgABC`, which passes).
+- Mooneye `serial/boot_sclk_align-dmgABCmgb`: the phase of the serial clock the boot ROM leaves
+  behind is not modelled.
+
+**Not supported:**
+
+- Mooneye `emulator-only/mbc2` (7 ROMs): MBC2 is not supported; such a ROM is refused with
+  "cartridge type 0x05 is not supported".
+- Mooneye `emulator-only/mbc1/multicart_rom_8Mb`: MBC1 multicarts (MBC1M) wire the bank register
   differently and are not supported.
-- The `emulator-only/mbc2` tests: MBC2 is not supported.
 - MBC5 bank bit 8: the Mooneye `mbc5` ROMs never set it (they only check bank numbers 0-255), so
   banks 256-511 are checked by unit tests only.
-- The other Mooneye acceptance tests in the same folders. All were run by hand; these do not pass:
-  - `boot_div-dmgABCmgb` and `boot_hwio-dmgABCmgb`: the exact DIV phase and the I/O register values
-    the boot ROM leaves behind are not modelled.
-  - `boot_*` tests for other models (`dmg0`, `mgb`, `sgb`, `sgb2`, `-S`) are expected to fail on a
-    DMG.
-  - `serial/boot_sclk_align-dmgABCmgb`: the phase of the serial clock the boot ROM leaves behind is
-    not modelled.
-  - `ppu/lcdon_timing-GS`: LY matches throughout. The first mismatch is the LYC = LY bit in STAT at
-    machine cycle `$6F` after the LCD is switched on: expected clear (`$80`), ours set (`$84`).
-  - `ppu/lcdon_write_timing-GS`: at machine cycle `$83` after the LCD is switched on an OAM write
-    should go through (`$81`); ours is blocked (`$00`).
-  - Both `lcdon` tests state their own cause: on the first line after the LCD is switched on the
-    PPU runs 2 dots late. That line starts in mode 0 here as on hardware, but the 2-dot lateness is
-    not modelled; that is the likely cause of both mismatches, not yet confirmed.
+
+**Other models, expected to fail on a DMG:** Mooneye `boot_*` for `dmg0`, `mgb`, `sgb`, `sgb2` and
+`-S` (9 ROMs), everything in `misc/` (Color and Advance) and `madness/`, and
+Blargg's `interrupt_time` and `cgb_sound` (Game Boy Color only). Mooneye's `manual-only/
+sprite_priority` is judged by eye against hardware and is not run.
 
 ## Known simplifications
 

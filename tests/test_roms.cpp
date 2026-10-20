@@ -101,27 +101,26 @@ INSTANTIATE_TEST_SUITE_P(
                     Rom{"mem_timing_03_modify", "mem_timing/individual/03-modify_timing.gb"}),
     [](const testing::TestParamInfo<Rom>& info) { return std::string(info.param.test_name); });
 
-// --- Blargg's sound tests ------------------------------------------------
+// --- Blargg ROMs that report in cartridge RAM -----------------------------
 //
-// dmg_sound reports in cartridge RAM rather than over serial: a status byte at
-// 0xA000 (0 for a pass) once the signature DE B0 61 is in 0xA001-0xA003, and
-// the text after it (app/ram_verdict.h; docs/apu-notes.md, section 2). Each
-// single ROM finishes within a few emulated seconds; allow 30.
+// dmg_sound and mem_timing-2 report in cartridge RAM rather than over serial: a
+// status byte at 0xA000 (0 for a pass) once the signature DE B0 61 is in
+// 0xA001-0xA003, and the text after it (app/ram_verdict.h; docs/apu-notes.md,
+// section 2). Each finishes within a few emulated seconds; allow 30.
 
-constexpr std::uint64_t kSoundMaxTicks = 30 * core::GameBoy::kTicksPerSecond;
+constexpr std::uint64_t kRamVerdictMaxTicks = 30 * core::GameBoy::kTicksPerSecond;
 
-class BlarggSoundRom : public testing::TestWithParam<Rom> {};
+class BlarggRamRom : public testing::TestWithParam<Rom> {};
 
-TEST_P(BlarggSoundRom, ReportsPassedInCartridgeRam) {
-    const std::string path =
-        std::string(GB_CSP_DIR) + "/blargg/dmg_sound/rom_singles/" + GetParam().path;
+TEST_P(BlarggRamRom, ReportsPassedInCartridgeRam) {
+    const std::string path = std::string(GB_CSP_DIR) + "/blargg/" + GetParam().path;
     const std::vector<std::uint8_t> rom = read_rom(path);
     ASSERT_FALSE(rom.empty()) << "cannot read " << path;
 
     core::GameBoy gb;
     ASSERT_EQ(gb.load_rom(rom), "");
     std::optional<frontend::RamVerdict> verdict;
-    while (!verdict && gb.cycles() < kSoundMaxTicks && !gb.cpu().locked()) {
+    while (!verdict && gb.cycles() < kRamVerdictMaxTicks && !gb.cpu().locked()) {
         gb.run_for(kTicksPerCheck);
         verdict = frontend::read_ram_verdict(gb.cartridge_ram());
     }
@@ -131,17 +130,29 @@ TEST_P(BlarggSoundRom, ReportsPassedInCartridgeRam) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    DmgSound, BlarggSoundRom,
-    testing::Values(Rom{"01_registers", "01-registers.gb"}, Rom{"02_len_ctr", "02-len ctr.gb"},
-                    Rom{"03_trigger", "03-trigger.gb"}, Rom{"04_sweep", "04-sweep.gb"},
-                    Rom{"05_sweep_details", "05-sweep details.gb"},
-                    Rom{"06_overflow_on_trigger", "06-overflow on trigger.gb"},
-                    Rom{"07_len_sweep_period_sync", "07-len sweep period sync.gb"},
-                    Rom{"08_len_ctr_during_power", "08-len ctr during power.gb"},
-                    Rom{"09_wave_read_while_on", "09-wave read while on.gb"},
-                    Rom{"10_wave_trigger_while_on", "10-wave trigger while on.gb"},
-                    Rom{"11_regs_after_power", "11-regs after power.gb"},
-                    Rom{"12_wave_write_while_on", "12-wave write while on.gb"}),
+    DmgSound, BlarggRamRom,
+    testing::Values(
+        Rom{"01_registers", "dmg_sound/rom_singles/01-registers.gb"},
+        Rom{"02_len_ctr", "dmg_sound/rom_singles/02-len ctr.gb"},
+        Rom{"03_trigger", "dmg_sound/rom_singles/03-trigger.gb"},
+        Rom{"04_sweep", "dmg_sound/rom_singles/04-sweep.gb"},
+        Rom{"05_sweep_details", "dmg_sound/rom_singles/05-sweep details.gb"},
+        Rom{"06_overflow_on_trigger", "dmg_sound/rom_singles/06-overflow on trigger.gb"},
+        Rom{"07_len_sweep_period_sync", "dmg_sound/rom_singles/07-len sweep period sync.gb"},
+        Rom{"08_len_ctr_during_power", "dmg_sound/rom_singles/08-len ctr during power.gb"},
+        Rom{"09_wave_read_while_on", "dmg_sound/rom_singles/09-wave read while on.gb"},
+        Rom{"10_wave_trigger_while_on", "dmg_sound/rom_singles/10-wave trigger while on.gb"},
+        Rom{"11_regs_after_power", "dmg_sound/rom_singles/11-regs after power.gb"},
+        Rom{"12_wave_write_while_on", "dmg_sound/rom_singles/12-wave write while on.gb"}),
+    [](const testing::TestParamInfo<Rom>& info) { return std::string(info.param.test_name); });
+
+// mem_timing-2: Blargg's later version of mem_timing, the same checks rewritten.
+INSTANTIATE_TEST_SUITE_P(
+    MemTiming2, BlarggRamRom,
+    testing::Values(Rom{"mem_timing", "mem_timing-2/mem_timing.gb"},
+                    Rom{"read_timing", "mem_timing-2/rom_singles/01-read_timing.gb"},
+                    Rom{"write_timing", "mem_timing-2/rom_singles/02-write_timing.gb"},
+                    Rom{"modify_timing", "mem_timing-2/rom_singles/03-modify_timing.gb"}),
     [](const testing::TestParamInfo<Rom>& info) { return std::string(info.param.test_name); });
 
 // The combined dmg_sound ROM runs all twelve and then repeats them, so it

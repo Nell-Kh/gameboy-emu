@@ -64,6 +64,9 @@ public:
     // the save file.
     [[nodiscard]] bool ram_changed() const noexcept;
     void clear_ram_changed() noexcept;
+    // For a write the battery keeps that is not a RAM byte, and for a reset
+    // that must not lose a change not yet saved.
+    void mark_changed() noexcept;
 
     // Save states: the mapper's registers, then the RAM, then the clock if
     // there is one. Loading RAM that differs from the current RAM counts as
@@ -78,8 +81,6 @@ protected:
     // `offset` is into the whole chip and must be below ram_size().
     [[nodiscard]] std::uint8_t ram_at(std::size_t offset) const noexcept;
     void set_ram_at(std::size_t offset, std::uint8_t value) noexcept;
-    // For a write the battery keeps that is not a RAM byte.
-    void mark_changed() noexcept;
 
     // The mapper's own part of a save state, before and after the RAM.
     virtual void save_registers(StateWriter& /*out*/) const {}

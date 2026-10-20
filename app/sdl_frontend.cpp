@@ -3,9 +3,9 @@
 // Each loop iteration handles input, runs the machine for one frame, shows
 // that frame and queues its sound. With an audio device the queue sets the
 // pace: a frame runs only while less than 50 ms of sound is waiting, so the
-// game runs at the sound card's clock (ADR-025). Without one the loop waits
-// for the wall clock instead, at the Game Boy's 59.73 frames per second
-// (ADR-016).
+// game runs at the sound card's clock (ADR-025). Without one, and while Tab
+// fast-forwards, the loop waits for the wall clock instead, at the Game Boy's
+// 59.73 frames per second (ADR-016) or kFastForward times that.
 
 #include "app/sdl_frontend.h"
 
@@ -17,9 +17,12 @@
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "app/dpad.h"
+#include "app/png.h"
 #include "app/state_file.h"
 #include "core/apu.h"
 #include "core/joypad.h"
@@ -37,6 +40,11 @@ constexpr int kExitSdlError = 70;
 // After a stall (the window being dragged, the machine sleeping) more than this
 // many frames behind, start pacing afresh instead of racing to catch up.
 constexpr std::uint64_t kMaxFramesBehind = 5;
+// Tab runs the game at most this many times its normal speed.
+constexpr std::uint64_t kFastForward = 4;
+// How long the loop sleeps between checks for input while paused.
+constexpr Uint32 kPausedSleepMs = 10;
+constexpr int kMaxScale = 4;
 
 // Shades 0 (lightest) to 3 as ARGB, in the green of the original screen.
 constexpr std::array<std::uint32_t, 4> kPalette = {0xFFE0F8D0, 0xFF88C070, 0xFF346856, 0xFF081820};
@@ -120,6 +128,13 @@ public:
     [[nodiscard]] std::uint64_t underruns() const noexcept {
         return underruns_;
     }
+    // A paused device keeps what is queued and plays it on resume, so a
+    // pause is not an underrun.
+    void set_paused(bool paused) const noexcept {
+        if (started_) {
+            SDL_PauseAudioDevice(device_, paused ? 1 : 0);
+        }
+    }
 
 private:
     SDL_AudioDeviceID device_ = 0;
@@ -194,10 +209,28 @@ bool is_direction(Button button) noexcept {
            button == Button::Down;
 }
 
+using Pixels = std::array<std::uint32_t, static_cast<std::size_t>(kWidth) * kHeight>;
+
+// Writes the picture last shown to the next free `<rom>-N.png`.
+void save_screenshot(const Pixels& pixels, const std::filesystem::path& rom) {
+    const std::filesystem::path path = screenshot_path_for(rom);
+    const std::string error = write_file_atomically(path, encode_png(kWidth, kHeight, pixels));
+    if (!error.empty()) {
+        std::cerr << "peasoup: screenshot not saved: " << error << "\n";
+        return;
+    }
+    std::cerr << "peasoup: screenshot saved to " << path.string() << "\n";
+}
+
+// The keys and what they do (the table is in --help and the README).
 class Session {
 public:
-    Session(core::GameBoy& gb, const std::filesystem::path& state_path)
-        : gb_(gb), state_path_(state_path), slot_(gb, state_path, std::cerr) {}
+    Session(core::GameBoy& gb, const WindowOptions& options, SDL_Window* window, AudioOut* audio)
+        : gb_(gb),
+          options_(options),
+          window_(window),
+          audio_(audio),
+          slot_(gb, options.state_path, std::cerr) {}
 
     // Handles every waiting event. Returns false once the user asked to quit.
     bool handle_events() {
@@ -226,6 +259,17 @@ public:
         return true;
     }
 
+    [[nodiscard]] bool paused() const noexcept {
+        return paused_;
+    }
+    [[nodiscard]] bool fast_forward() const noexcept {
+        return fast_forward_;
+    }
+    // True once after F12.
+    [[nodiscard]] bool take_screenshot_request() noexcept {
+        return std::exchange(screenshot_requested_, false);
+    }
+
 private:
     bool handle_key(const SDL_KeyboardEvent& key) {
         const bool down = key.type == SDL_KEYDOWN;
@@ -235,16 +279,11 @@ private:
         if (key.repeat != 0) {
             return true;
         }
-        if (down && !state_path_.empty() && key.keysym.sym == SDLK_F5) {
-            slot_.save();
+        if (key.keysym.sym == SDLK_TAB) {
+            fast_forward_ = down;  // held, not toggled
             return true;
         }
-        if (down && !state_path_.empty() && key.keysym.sym == SDLK_F8) {
-            if (slot_.load()) {
-                // The state holds the buttons held when it was saved; the
-                // keys held now are what count.
-                apply_held();
-            }
+        if (down && run_command(key.keysym.sym)) {
             return true;
         }
         const std::optional<Button> button = button_for(key.keysym.sym);
@@ -260,6 +299,51 @@ private:
         return true;
     }
 
+    // The keys that are not Game Boy buttons. Returns false for any other key.
+    bool run_command(SDL_Keycode key) {
+        if (key >= SDLK_1 && key < SDLK_1 + kMaxScale) {
+            const int scale = static_cast<int>(key - SDLK_1) + 1;
+            SDL_SetWindowSize(window_, kWidth * scale, kHeight * scale);
+            return true;
+        }
+        switch (key) {
+            case SDLK_F5:
+                if (!options_.state_path.empty()) {
+                    slot_.save();
+                }
+                return true;
+            case SDLK_F8:
+                // The state holds the buttons held when it was saved; the
+                // keys held now are what count.
+                if (!options_.state_path.empty() && slot_.load()) {
+                    apply_held();
+                }
+                return true;
+            case SDLK_p:
+                set_paused(!paused_);
+                return true;
+            case SDLK_r:
+                gb_.reset();
+                apply_held();
+                std::cerr << "peasoup: reset\n";
+                return true;
+            case SDLK_F12:
+                screenshot_requested_ = !options_.rom_path.empty();
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    void set_paused(bool paused) {
+        paused_ = paused;
+        if (audio_ != nullptr) {
+            audio_->set_paused(paused);
+        }
+        const std::string title = options_.title + (paused ? " (paused)" : "");
+        SDL_SetWindowTitle(window_, title.c_str());
+    }
+
     // Tells the machine which buttons are pressed now.
     void apply_held() {
         for (const Button button : kButtons) {
@@ -272,15 +356,71 @@ private:
     void release_all() {
         dpad_ = Dpad{};
         held_ = {};
+        fast_forward_ = false;
         apply_held();
     }
 
     core::GameBoy& gb_;
-    std::filesystem::path state_path_;
+    const WindowOptions& options_;
+    SDL_Window* window_;
+    AudioOut* audio_;  // null without sound
     StateSlot slot_;
     Dpad dpad_;
     std::array<bool, kButtons.size()> held_{};  // A, B, Select, Start, by Button
+    bool paused_ = false;
+    bool fast_forward_ = false;
+    bool screenshot_requested_ = false;
 };
+
+// When the next frame may run: when the audio queue has room (ADR-025), or,
+// with no sound and while fast-forwarding, when the wall clock says so.
+class Pacer {
+public:
+    explicit Pacer(const AudioOut* audio) noexcept : audio_(audio) {}
+
+    // True if a frame should run now; otherwise it has slept a little.
+    bool ready(bool fast_forward) {
+        if (audio_ != nullptr && !fast_forward) {
+            if (audio_->full()) {
+                SDL_Delay(1);  // the sound card is behind; let it catch up
+                return false;
+            }
+            next_ = SDL_GetPerformanceCounter();  // a fast-forward starts from now
+            return true;
+        }
+        const std::uint64_t now = SDL_GetPerformanceCounter();
+        if (now < next_) {
+            SDL_Delay(static_cast<Uint32>((next_ - now) * 1000 / per_second_));
+            return false;
+        }
+        const std::uint64_t step = fast_forward ? per_frame_ / kFastForward : per_frame_;
+        next_ = now - next_ > kMaxFramesBehind * per_frame_ ? now + step : next_ + step;
+        return true;
+    }
+
+    // After a pause, start counting from now rather than racing to catch up.
+    void restart() noexcept {
+        next_ = SDL_GetPerformanceCounter();
+    }
+
+private:
+    const AudioOut* audio_;
+    std::uint64_t per_second_ = SDL_GetPerformanceFrequency();
+    std::uint64_t per_frame_ =
+        per_second_ * core::GameBoy::kTicksPerFrame / core::GameBoy::kTicksPerSecond;
+    std::uint64_t next_ = SDL_GetPerformanceCounter();
+};
+
+void present(SDL_Renderer* renderer, SDL_Texture* texture, const core::Ppu::Frame& frame,
+             Pixels& pixels) {
+    for (std::size_t i = 0; i < pixels.size(); ++i) {
+        pixels.at(i) = kPalette.at(frame.at(i) & 3U);
+    }
+    SDL_UpdateTexture(texture, nullptr, pixels.data(), kWidth * 4);
+    SDL_RenderClear(renderer);
+    SDL_RenderCopy(renderer, texture, nullptr, nullptr);
+    SDL_RenderPresent(renderer);
+}
 
 }  // namespace
 
@@ -343,18 +483,25 @@ int run_window(core::GameBoy& gb, const WindowOptions& options, BatterySaver* sa
     gb.set_audio_enabled(audio.has_value());
 
     const std::uint64_t counts_per_second = SDL_GetPerformanceFrequency();
-    const std::uint64_t counts_per_frame =
-        counts_per_second * core::GameBoy::kTicksPerFrame / core::GameBoy::kTicksPerSecond;
     const std::uint64_t started = SDL_GetPerformanceCounter();
-    std::uint64_t next_frame = started;
     std::uint64_t frames = 0;
 
-    Session session(gb, options.state_path);
-    std::array<std::uint32_t, static_cast<std::size_t>(kWidth) * kHeight> pixels{};
+    AudioOut* sound = audio ? &*audio : nullptr;
+    Session session(gb, options, window.get(), sound);
+    Pacer pacer(sound);
+    Pixels pixels{};
     std::vector<float> samples;
     while (session.handle_events()) {
-        if (audio && audio->full()) {
-            SDL_Delay(1);  // the sound card is behind; let it catch up
+        if (session.take_screenshot_request()) {
+            save_screenshot(pixels, options.rom_path);
+        }
+        if (session.paused()) {
+            SDL_Delay(kPausedSleepMs);
+            pacer.restart();
+            continue;
+        }
+        const bool fast = session.fast_forward();
+        if (!pacer.ready(fast)) {
             continue;
         }
         gb.run_frame();
@@ -362,31 +509,16 @@ int run_window(core::GameBoy& gb, const WindowOptions& options, BatterySaver* sa
         if (saver != nullptr) {
             saver->tick(BatterySaver::Clock::now());
         }
-        if (audio) {
+        if (sound != nullptr) {
             samples.clear();
             gb.take_audio(samples);
-            queue_frame_sound(*audio, samples, frames, started, counts_per_second);
+            // Fast-forwarding makes sound faster than it plays: keep the queue
+            // fed and drop the rest.
+            if (!fast || !sound->full()) {
+                queue_frame_sound(*sound, samples, frames, started, counts_per_second);
+            }
         }
-
-        const core::Ppu::Frame& frame = gb.frame();
-        for (std::size_t i = 0; i < pixels.size(); ++i) {
-            pixels.at(i) = kPalette.at(frame.at(i) & 3U);
-        }
-        SDL_UpdateTexture(texture.get(), nullptr, pixels.data(), kWidth * 4);
-        SDL_RenderClear(renderer.get());
-        SDL_RenderCopy(renderer.get(), texture.get(), nullptr, nullptr);
-        SDL_RenderPresent(renderer.get());
-
-        if (audio) {
-            continue;  // the audio queue paces the loop
-        }
-        next_frame += counts_per_frame;
-        const std::uint64_t now = SDL_GetPerformanceCounter();
-        if (now < next_frame) {
-            SDL_Delay(static_cast<Uint32>((next_frame - now) * 1000 / counts_per_second));
-        } else if (now - next_frame > kMaxFramesBehind * counts_per_frame) {
-            next_frame = now;
-        }
+        present(renderer.get(), texture.get(), gb.frame(), pixels);
     }
     if (audio) {
         // How well the pacing worked: 0 underruns is "no crackle" (ADR-025).

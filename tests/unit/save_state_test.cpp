@@ -381,6 +381,78 @@ TEST_F(Refused, AMissingSection) {
     expect_refused(state, "the save state was refused: section CART is missing");
 }
 
+// --- Reset (R in the window): off and on again, with the battery's contents ---
+
+TEST(Reset, StartsTheMachineAfreshButKeepsBatteryRamAndTheClock) {
+    const Bytes rom = counter_rom(0x10, 0x02);  // MBC3 + timer + RAM + battery
+    GameBoy gb;
+    ASSERT_EQ(gb.load_rom(rom), "");
+    Bytes ram(gb.battery_ram().size());
+    for (std::size_t i = 0; i < ram.size(); ++i) {
+        ram[i] = static_cast<std::uint8_t>(i * 7);
+    }
+    ASSERT_TRUE(gb.load_battery_ram(ram));
+    gb.set_audio_enabled(true);
+    gb.run_for(3 * GameBoy::kTicksPerSecond + 12'345);
+    const auto clock = gb.clock()->live();
+    const std::uint32_t sub_second = gb.clock()->sub_second();
+    ASSERT_NE(gb.bus().read8(0xC000), 0);
+
+    gb.reset();
+    GameBoy fresh;
+    ASSERT_EQ(fresh.load_rom(rom), "");
+    EXPECT_EQ(gb.cycles(), 0U);
+    EXPECT_EQ(gb.cpu().registers().pc, fresh.cpu().registers().pc);
+    EXPECT_EQ(gb.bus().read8(0xC000), fresh.bus().read8(0xC000));
+    EXPECT_TRUE(
+        std::equal(ram.begin(), ram.end(), gb.battery_ram().begin(), gb.battery_ram().end()));
+    EXPECT_EQ(gb.clock()->live(), clock);
+    EXPECT_EQ(gb.clock()->sub_second(), sub_second);
+    EXPECT_EQ(gb.rom_title(), "STATETEST");
+
+    // Sound output is still on, and the machine runs as a fresh one does.
+    gb.run_for(GameBoy::kTicksPerSecond / 10);
+    std::vector<float> sound;
+    gb.take_audio(sound);
+    EXPECT_FALSE(sound.empty());
+    fresh.run_for(GameBoy::kTicksPerSecond / 10);
+    EXPECT_EQ(gb.cpu().registers().pc, fresh.cpu().registers().pc);
+    EXPECT_EQ(gb.bus().read8(0xC000), fresh.bus().read8(0xC000));
+}
+
+// Changes not yet written to the save file must still be written after a
+// reset; a reset alone is not a change.
+TEST(Reset, KeepsWhetherBatteryRamHasUnsavedChanges) {
+    // MBC1 + RAM + battery; the program enables RAM and writes 0x42 to A000.
+    Bytes rom = test::make_rom({
+        0x3E, 0x0A,        // LD A, 0x0A
+        0xEA, 0x00, 0x00,  // LD [0x0000], A   ; enable RAM
+        0x3E, 0x42,        // LD A, 0x42
+        0xEA, 0x00, 0xA0,  // LD [0xA000], A
+        0x18, 0xFE,        // JR -2
+    });
+    rom[kType] = 0x03;
+    rom[kRamSizeCode] = 0x02;
+    GameBoy gb;
+    ASSERT_EQ(gb.load_rom(rom), "");
+    gb.run_for(100);
+    ASSERT_TRUE(gb.battery_ram_changed());
+    gb.reset();
+    EXPECT_TRUE(gb.battery_ram_changed());
+    EXPECT_EQ(gb.battery_ram()[0], 0x42);
+    gb.clear_battery_ram_changed();
+    gb.reset();
+    EXPECT_FALSE(gb.battery_ram_changed());
+    EXPECT_EQ(gb.battery_ram()[0], 0x42);
+}
+
+TEST(Reset, DoesNothingBeforeARomIsLoaded) {
+    GameBoy gb;
+    gb.reset();
+    EXPECT_EQ(gb.cycles(), 0U);
+    EXPECT_EQ(gb.rom_title(), "");
+}
+
 // --- Every mapper register and the joypad come back in a fresh machine ---
 //
 // A field left out of both save and load would still give byte-identical

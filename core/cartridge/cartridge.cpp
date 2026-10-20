@@ -183,7 +183,7 @@ CartridgeOrError make_cartridge(std::span<const std::uint8_t> rom) {
         case Mapper::Unsupported:
             break;
     }
-    return {nullptr, "cartridge type " + hex_byte(header.type) + " is not supported yet"};
+    return {nullptr, "cartridge type " + hex_byte(header.type) + " is not supported"};
 }
 
 void Cartridge::save_state(StateWriter& out) const {

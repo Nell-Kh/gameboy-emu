@@ -59,9 +59,14 @@ otherwise, is stored in this repository. The tests read PNG screenshots with
 | Select | Backspace |
 | Save state | F5 |
 | Load state | F8 |
+| Window size 1x-4x | 1-4 |
+| Fast-forward (up to 4x) | hold Tab |
+| Pause | P |
+| Reset | R |
+| Screenshot (`game-1.png`, ...) | F12 |
 
 Escape closes the window. `--scale N` sets the window size to N times 160x144 (default 4); the
-window can also be resized. Games with battery saves keep them, and the cartridge clock if there
+window can also be resized. `peasoup --help` lists every option and key. Games with battery saves keep them, and the cartridge clock if there
 is one, in a `.sav` file next to the ROM, written when the window closes and while you play. F5
 saves the whole machine to a `.state` file next to the ROM and F8 loads it back; there is one
 state per ROM, and a state in another format version or for another ROM is refused. Sound plays

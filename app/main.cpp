@@ -64,11 +64,19 @@ void print_usage(std::ostream& out) {
         << "  --mute           no sound; the game is then paced by the clock, not the\n"
         << "                   audio device\n"
         << "\n"
-        << "  Keys: arrows = d-pad, X = A, Z = B, Enter = Start, Backspace = Select,\n"
-        << "        Esc = quit\n"
-        << "  Battery saves (and a cartridge clock) are kept next to the ROM, with the\n"
-        << "  extension .sav.\n"
-        << "  F5 saves a state to a .state file next to the ROM; F8 loads it.\n"
+        << "Keys in the window:\n"
+        << "  arrows           d-pad\n"
+        << "  X / Z            A / B\n"
+        << "  Enter            Start\n"
+        << "  Backspace        Select\n"
+        << "  F5 / F8          save / load the state (ROM.state)\n"
+        << "  1-4              window size 1x-4x\n"
+        << "  Tab (hold)       fast-forward, up to 4x\n"
+        << "  P                pause\n"
+        << "  R                reset (battery RAM and the clock are kept)\n"
+        << "  F12              screenshot (ROM-1.png, ROM-2.png, ...)\n"
+        << "  Esc              quit\n"
+        << "Battery saves (and a cartridge clock) are kept next to the ROM, in ROM.sav.\n"
         << "\n"
         << "  --headless       run ROM without a window and print its serial output, or\n"
         << "                   the result it writes to cartridge RAM (Blargg's sound tests)\n"
@@ -169,13 +177,36 @@ std::optional<Options> parse_arguments(std::span<const std::string_view> args, s
     return options;
 }
 
-std::optional<std::vector<std::uint8_t>> read_file(const std::string& path) {
+// The largest ROM a supported cartridge holds: MBC5, 512 banks of 16 KiB.
+constexpr std::uintmax_t kMaxRomBytes = std::uintmax_t{8} * 1024 * 1024;
+
+// The bytes of the ROM file at `path`, or why it cannot be read.
+struct RomFile {
+    std::vector<std::uint8_t> bytes;
+    std::string error;
+};
+
+RomFile read_rom_file(const std::string& path) {
+    std::error_code error;
+    if (!std::filesystem::exists(path, error)) {
+        return {.bytes = {}, .error = "no such file"};
+    }
+    if (!std::filesystem::is_regular_file(path, error)) {
+        return {.bytes = {}, .error = "not a file"};
+    }
+    if (const std::uintmax_t size = std::filesystem::file_size(path, error);
+        !error && size > kMaxRomBytes) {
+        return {
+            .bytes = {},
+            .error = std::to_string(size) + " bytes is more than the largest Game Boy ROM (8 MiB)"};
+    }
     std::ifstream file(path, std::ios::binary);
     if (!file) {
-        return std::nullopt;
+        return {.bytes = {}, .error = "cannot open it"};
     }
-    return std::vector<std::uint8_t>(std::istreambuf_iterator<char>(file),
-                                     std::istreambuf_iterator<char>());
+    return {.bytes = std::vector<std::uint8_t>(std::istreambuf_iterator<char>(file),
+                                               std::istreambuf_iterator<char>()),
+            .error = {}};
 }
 
 void append_hex(std::string& out, std::uint16_t value, int digits) {
@@ -221,12 +252,12 @@ std::string trace_line(const core::GameBoy& gb) {
 
 // Reads the ROM and inserts it. Returns an exit status if that failed.
 std::optional<int> load(core::GameBoy& gb, const std::string& path) {
-    const auto rom = read_file(path);
-    if (!rom) {
-        std::cerr << "peasoup: cannot read " << path << "\n";
+    const RomFile rom = read_rom_file(path);
+    if (!rom.error.empty()) {
+        std::cerr << "peasoup: cannot read " << path << ": " << rom.error << "\n";
         return kExitNoInput;
     }
-    if (const std::string error = gb.load_rom(*rom); !error.empty()) {
+    if (const std::string error = gb.load_rom(rom.bytes); !error.empty()) {
         std::cerr << "peasoup: cannot run " << path << ": " << error << "\n";
         return kExitBadRom;
     }
@@ -344,7 +375,8 @@ int main(int argc, char** argv) {
                              {.title = window_title(gb, options->rom_path),
                               .scale = options->scale,
                               .state_path = frontend::state_path_for(options->rom_path),
-                              .mute = options->mute},
+                              .mute = options->mute,
+                              .rom_path = options->rom_path},
                              &saver);
     saver.flush();
     return status;

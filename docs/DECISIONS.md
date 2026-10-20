@@ -369,6 +369,14 @@ record that supersedes the old one, not by editing history.
   a percent of nominal on any real card. The M5 exit requires the counter at zero over five
   minutes of Libbet; the dummy driver in CI drains its queue at real time too, so the pacing
   also works there.
+- **Found by measuring (v0.5.0):** the by-hand check first gave 2 underruns in 30 s. Reporting
+  each underrun with its frame, its time and the stall behind it found two causes that listening
+  would not have told apart from ordinary crackle: the core made no samples while a game had the
+  APU powered off (NR52 bit 7), so the queue ran dry and the loop ran unpaced; and SDL's default
+  text input sent every key press through macOS's input-method framework, whose set-up on the
+  first key press stalled the loop for longer than the 50 ms queue. With both fixed (silence while
+  powered off, `SDL_StopTextInput()`), Libbet's demo ran 7 minutes with 0 underruns. The report
+  stays, so the next cause is found the same way.
 
 ## ADR-026: The product is called peasoup
 
@@ -386,3 +394,26 @@ record that supersedes the old one, not by editing history.
 - **Consequences:** Commands in the docs change (`./build/release/app/peasoup`). States saved
   before v1.0.0 stop loading, with a message that says where they came from; battery saves
   (`.sav`) are not affected.
+
+## ADR-027: Window controls for v1.0, and the version from git
+
+- **Status:** Accepted (M6 brief, item 1 and release check 6).
+- **Decision:** In the window, 1-4 set the size to 1x-4x; Tab fast-forwards while held, P
+  pauses, R resets, F12 saves a screenshot. Fast-forward paces by the wall clock at up to 4x the
+  normal frame rate and keeps the audio queue fed, dropping the sound it has no room for, so
+  releasing Tab is not an underrun. Pause also pauses the audio device, which keeps what is
+  queued. Reset is power off and on with the same cartridge: every component starts afresh
+  (`GameBoy::reset()`), while battery RAM, its unsaved-change flag and the clock carry over, as a
+  battery keeps them. A screenshot is the 160x144 picture last shown, written to the first free
+  `ROM-N.png` next to the ROM by a small PNG writer of our own (stored deflate blocks, the
+  existing CRC-32): stb stays test-only (ADR-015) and the frontend gains no dependency. The
+  version in `--help` is `git describe --tags --dirty` of the checkout, found by
+  `cmake/git_version.cmake` at configure time (so clang-tidy, which only configures, finds the
+  header) and again at every build, and rewritten only when it changes; without git it is the
+  project version.
+- **Not done:** drag-and-drop of a ROM onto the window. SDL reports the dropped path for free,
+  but switching games means flushing the old game's battery save, loading the new one's, and
+  moving the state path and title with it; the brief asked for it only if it came for free.
+- **Consequences:** A ROM path that is a folder, too large to be a ROM, too small or for an
+  unsupported cartridge gets one line saying why (it used to crash on a folder). CI's shallow
+  checkout has no tags, so a CI build reports the commit hash as its version.

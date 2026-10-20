@@ -208,7 +208,7 @@ TEST(MakeCartridge, UnknownSizeCodeIsRejected) {
 TEST(MakeCartridge, UnsupportedMapperIsRejectedByName) {
     const auto result = make_cartridge(make_image(0x8000, 0x05, 0x00, 0x00));  // MBC2
     EXPECT_EQ(result.cartridge, nullptr);
-    EXPECT_EQ(result.error, "cartridge type 0x05 is not supported yet");
+    EXPECT_EQ(result.error, "cartridge type 0x05 is not supported");
 }
 
 TEST(MakeCartridge, RomOnlyWithMoreThan8KiBOfRamIsRejected) {

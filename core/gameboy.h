@@ -62,6 +62,13 @@ public:
     // Total clock ticks since power-on.
     [[nodiscard]] std::uint64_t cycles() const noexcept;
 
+    // Switches the machine off and on again with the same cartridge: every
+    // component starts afresh, as after load_rom(), but the cartridge's
+    // battery RAM and its clock keep their contents, as a battery keeps them
+    // on hardware. Does nothing before a ROM is loaded. Sound output stays as
+    // it was set.
+    void reset();
+
     // The title in the loaded ROM's header (0x0134-0x0143), up to its first
     // byte that is not printable ASCII: later cartridges keep a colour flag
     // (0x80 or 0xC0) in the last byte. Empty before a ROM is loaded.
@@ -136,6 +143,8 @@ private:
     Bus bus_;
     Cpu cpu_{bus_};
     RomIdentity rom_identity_;
+    std::vector<std::uint8_t> rom_;  // the loaded ROM, for reset()
+    bool audio_enabled_ = false;
 };
 
 }  // namespace core

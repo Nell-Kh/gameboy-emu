@@ -91,6 +91,7 @@ if(GB_FETCH_TEST_ROMS)
   add_executable(rom_tests
     acid2_test.cpp
     cartridge_screens_test.cpp
+    png_test.cpp
     save_state_rom_test.cpp
     screenshot.cpp
     test_roms.cpp
@@ -131,6 +132,18 @@ set_tests_properties(App.RejectsUnknownOptions PROPERTIES WILL_FAIL TRUE)
 add_test(NAME App.WindowModeReportsAMissingRom COMMAND peasoup no-such-rom.gb)
 set_tests_properties(App.WindowModeReportsAMissingRom PROPERTIES
   PASS_REGULAR_EXPRESSION "cannot read no-such-rom.gb"
+)
+# A folder, a file too small to be a ROM, and an unsupported cartridge: one
+# line saying why, never a crash.
+add_test(NAME App.ReportsAFolderGivenAsTheRom COMMAND peasoup ${CMAKE_CURRENT_SOURCE_DIR})
+set_tests_properties(App.ReportsAFolderGivenAsTheRom PROPERTIES
+  PASS_REGULAR_EXPRESSION "peasoup: cannot read [^\n]*: not a file"
+)
+file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/three-bytes.gb "abc")
+add_test(NAME App.ReportsAFileTooSmallToBeARom
+  COMMAND peasoup ${CMAKE_CURRENT_BINARY_DIR}/three-bytes.gb)
+set_tests_properties(App.ReportsAFileTooSmallToBeARom PROPERTIES
+  PASS_REGULAR_EXPRESSION "peasoup: cannot run [^\n]*: the file is too small to be a Game Boy ROM"
 )
 add_test(NAME App.TraceNeedsHeadless COMMAND peasoup --trace no-such-rom.gb)
 set_tests_properties(App.TraceNeedsHeadless PROPERTIES

@@ -290,8 +290,9 @@ that is a bug in this document.
   power-on the sound registers hold the DMG boot ROM's values, channel 1 is marked on with its
   volume at 0 (the volume the boot sound ends on is not documented), wave RAM and the wave
   channel's fetched byte are zero (random on hardware) and the frame sequencer's next step is 0.
-  Save states do not include the APU yet; it gets its own section, and the format version 2,
-  later in M5 (docs/apu-notes.md, section 8).
+  Save states hold the APU (format version 2; docs/apu-notes.md, section 8) but not the sound
+  output's own state, so after a load the high-pass filter carries on from where the window
+  was, not from where the state was saved: a click at most, like the picture jumping.
 - **LCD off:** the frame goes blank (shade 0) while the LCD is off. On hardware the screen is
   then a little lighter than shade 0.
 - **Frontend:** the window runs one whole frame at a time. With sound it is paced by the audio
@@ -302,9 +303,10 @@ that is a bug in this document.
   by that much.
 - **Save states:** one per ROM, `game.state` next to it, F5 to save and F8 to load (ADR-020).
   A state stores everything the machine needs to continue identically (checked by the
-  determinism tests), but not the serial output text, which is a test aid. A load gives the game
-  the buttons held at that moment, not the ones held when the state was saved. A state from
-  another format version is refused; there is no conversion.
+  determinism tests, sound included), but not the serial output text, which is a test aid, nor
+  the sound output's own state. A load gives the game the buttons held at that moment, not the
+  ones held when the state was saved. A state from another format version is refused (states
+  from v0.4.0 are version 1; v0.5.0 reads version 2); there is no conversion.
 - **Joypad:** a button press shows in `FF00` and requests the joypad interrupt the moment the
   frontend reports it. Not modelled: switch bounce, which on hardware can request the interrupt
   several times per press, and the few cycles a newly selected group takes to show. Opposite

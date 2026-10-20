@@ -174,7 +174,12 @@ The output buffer and the high-pass filter's memory are left out, as the serial 
 section is a layout change, so the format version goes to 2 and `v0.4.0` states are refused with
 the reason, as ADR-020 says, with no converter **(agreed in review)**; the v0.5.0 release notes
 say so. The determinism tests also compare the samples produced after a load with those of the
-original run.
+original run. **As built:** 97 bytes between `JOYP` and `PPU ` (the table in
+`docs/cartridge-notes.md`, section 7); the sound output is switched on at the save on both sides
+of the determinism tests, the replaying side being a fresh machine, since the output's own state
+is not in the file; Blargg's combined `dmg_sound` joins the replayed ROMs, so every channel is
+busy. A unit test loads a busy APU's section into a machine in the boot state and requires the
+same output tick for tick for a tenth of a second, through sweep, envelope and length clocks.
 
 ## 9. Order of work and exit
 

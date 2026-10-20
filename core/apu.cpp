@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "core/state_io.h"
+
 namespace core {
 
 namespace {
@@ -437,6 +439,63 @@ std::uint16_t Apu::sweep_calculate() noexcept {
         channels_[0].on = false;
     }
     return period;
+}
+
+// Field by field, in the order of the table in docs/cartridge-notes.md,
+// section 7; a unit test checks the section's length against it.
+void Apu::save_state(StateWriter& out) const {
+    out.bytes(registers_);
+    out.bytes(wave_ram_);
+    out.boolean(powered_);
+    out.u8(step_);
+    for (const Channel& c : channels_) {
+        out.boolean(c.on);
+        out.boolean(c.length_enabled);
+        out.u16(c.length);
+        out.u8(c.volume);
+        out.u8(c.envelope_timer);
+        out.u32(c.timer);
+        out.u8(c.position);
+    }
+    out.u16(sweep_shadow_);
+    out.u8(sweep_timer_);
+    out.boolean(sweep_enabled_);
+    out.boolean(sweep_negated_);
+    out.u16(lfsr_);
+    out.u8(wave_sample_);
+    out.u32(since_wave_fetch_);
+}
+
+void Apu::load_state(StateReader& in) {
+    constexpr std::uint8_t kLastStep = 7;
+    constexpr std::uint8_t kLongestTimer = timer_period(0);  // 8, for envelope and sweep
+    in.bytes(registers_);
+    in.bytes(wave_ram_);
+    powered_ = in.boolean();
+    step_ = in.at_most(in.u8(), kLastStep);
+    for (int channel = 0; channel < kChannels; ++channel) {
+        Channel& c = channels_[static_cast<std::size_t>(channel)];
+        c.on = in.boolean();
+        c.length_enabled = in.boolean();
+        c.length = static_cast<std::uint16_t>(
+            in.at_most(std::uint32_t{in.u16()}, std::uint32_t{full_length(channel)}));
+        c.volume = in.at_most(in.u8(), kMaxVolume);
+        c.envelope_timer = in.at_most(in.u8(), kLongestTimer);
+        c.timer = in.u32();
+        // The position indexes the duty pattern or wave RAM.
+        const std::uint8_t last_position =
+            channel == kWaveChannel ? kWaveSamples - 1 : kDutySteps - 1;
+        c.position = in.at_most(in.u8(), last_position);
+    }
+    sweep_shadow_ =
+        static_cast<std::uint16_t>(in.at_most(std::uint32_t{in.u16()}, std::uint32_t{kMaxPeriod}));
+    sweep_timer_ = in.at_most(in.u8(), kLongestTimer);
+    sweep_enabled_ = in.boolean();
+    sweep_negated_ = in.boolean();
+    lfsr_ =
+        static_cast<std::uint16_t>(in.at_most(std::uint32_t{in.u16()}, std::uint32_t{kLfsrFull}));
+    wave_sample_ = in.u8();
+    since_wave_fetch_ = in.u32();
 }
 
 void Apu::tick(std::uint32_t t_cycles) noexcept {

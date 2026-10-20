@@ -103,7 +103,7 @@ public:
     // Save states (ADR-020; docs/cartridge-notes.md, section 7): the whole
     // machine as a file's bytes, a 48-byte header and then the sections.
     static constexpr std::size_t kStateHeaderSize = 48;
-    static constexpr std::uint32_t kStateVersion = 1;
+    static constexpr std::uint32_t kStateVersion = 2;  // 2: the APU section (v0.5.0)
     [[nodiscard]] std::vector<std::uint8_t> save_state() const;
     // Loads a state made by save_state() for the same ROM. Returns an empty
     // string, or the reason the file was refused; a refused file leaves the

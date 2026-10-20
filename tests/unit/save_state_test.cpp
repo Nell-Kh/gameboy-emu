@@ -154,7 +154,7 @@ TEST(SaveState, TheHeaderHoldsTheMagicVersionRomIdentityAndCrc) {
     const Bytes state = gb.save_state();
     ASSERT_GT(state.size(), GameBoy::kStateHeaderSize);
     const Bytes header(state.begin(), state.begin() + GameBoy::kStateHeaderSize);
-    Bytes expected = {'G', 'B', 'E', 'M', 'U', 'S', 'T', 'A', 1, 0, 0, 0, 0x5A, 0, 0x12, 0x34};
+    Bytes expected = {'G', 'B', 'E', 'M', 'U', 'S', 'T', 'A', 2, 0, 0, 0, 0x5A, 0, 0x12, 0x34};
     const std::string title = "STATETEST";
     expected.insert(expected.end(), title.begin(), title.end());
     expected.resize(32, 0);
@@ -171,8 +171,8 @@ TEST(SaveState, TheHeaderHoldsTheMagicVersionRomIdentityAndCrc) {
 // section 7, so the document and the code cannot drift apart.
 TEST(SaveState, SectionsComeInOrderWithTheDocumentedSizes) {
     const std::vector<std::pair<std::string, std::uint32_t>> fixed = {
-        {"CPU ", 17}, {"BUS ", 8461}, {"TIMR", 7},     {"SERL", 6},
-        {"DMA ", 8},  {"JOYP", 2},    {"PPU ", 31442},
+        {"CPU ", 17}, {"BUS ", 8461}, {"TIMR", 7},  {"SERL", 6},
+        {"DMA ", 8},  {"JOYP", 2},    {"APU ", 97}, {"PPU ", 31442},
     };
     struct Cart {
         std::uint8_t type;
@@ -290,10 +290,14 @@ TEST_F(Refused, AWrongMagic) {
     expect_refused(state, "the file is not a save state");
 }
 
+// A v0.4.0 state (version 1, no APU section) is refused with the reason;
+// there is no converter (docs/apu-notes.md, section 8).
 TEST_F(Refused, AnotherFormatVersion) {
     Bytes state = good_;
-    state[8] = 2;
-    expect_refused(state, "the save state is format version 2; this build reads version 1");
+    state[8] = 1;
+    expect_refused(state, "the save state is format version 1; this build reads version 2");
+    state[8] = 3;
+    expect_refused(state, "the save state is format version 3; this build reads version 2");
 }
 
 TEST_F(Refused, AStateForAnotherRom) {
@@ -330,6 +334,11 @@ TEST_F(Refused, AValueASectionDoesNotAllowEvenWithAMatchingCrc) {
     ime[payload_of("CPU ") + 12] = 3;  // IME: 0, 1 or 2
     fix_crc(ime);
     expect_refused(ime, "the save state was refused: a value in section CPU  is out of range");
+
+    Bytes step = good_;
+    step[payload_of("APU ") + 23 + 16 + 1] = 8;  // the frame-sequencer step: 0-7
+    fix_crc(step);
+    expect_refused(step, "the save state was refused: a value in section APU  is out of range");
 
     // A bad value late in the file, after CPU, BUS and the rest were loaded:
     // they must be put back.

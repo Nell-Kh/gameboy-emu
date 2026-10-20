@@ -324,6 +324,9 @@ void Bus::save_state(StateWriter& out) const {
     out.begin_section("JOYP");
     joypad_.save_state(out);
     out.end_section();
+    out.begin_section("APU ");
+    apu_.save_state(out);
+    out.end_section();
     out.begin_section("PPU ");
     ppu_.save_state(out);
     out.end_section();
@@ -357,6 +360,9 @@ void Bus::load_state(StateReader& in) {
     in.end_section();
     in.begin_section("JOYP");
     joypad_.load_state(in);
+    in.end_section();
+    in.begin_section("APU ");
+    apu_.load_state(in);
     in.end_section();
     in.begin_section("PPU ");
     ppu_.load_state(in);

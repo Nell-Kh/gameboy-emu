@@ -1,17 +1,19 @@
 // Save-state determinism on real ROMs (ADR-020; docs/cartridge-notes.md,
 // section 7). A loaded state must continue exactly as the machine it was
-// saved from: same frame, registers, tick count and every other byte of
-// state, given the same input.
+// saved from: same frame, registers, tick count, sound samples and every
+// other byte of state, given the same input.
 //
 // The ROMs: Blargg's combined cpu_instrs (MBC1, timer and serial), rtc3test
-// played through its menu (input, the MBC3 clock, screen updates), and two
-// Mooneye ROMs that keep OAM DMA and the PPU busy, saved at many points in
-// the middle of transfers and lines. The design named Libbet's demo; Libbet
-// is built by hand and is not in the CI test-ROM collection, so rtc3test is
-// the input-driven ROM here.
+// played through its menu (input, the MBC3 clock, screen updates), Blargg's
+// combined dmg_sound (every sound channel busy), and two Mooneye ROMs that
+// keep OAM DMA and the PPU busy, saved at many points in the middle of
+// transfers and lines. The design named Libbet's demo; Libbet is built by
+// hand and is not in the CI test-ROM collection, so rtc3test is the
+// input-driven ROM here.
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <initializer_list>
 #include <string>
@@ -41,7 +43,10 @@ struct Press {
 };
 constexpr int kHoldFrames = 5;
 
-void run_frames(GameBoy& gb, int first, int count, std::initializer_list<Press> presses = {}) {
+// With `sound`, the samples of every frame are collected there (the core
+// keeps at most a second of them).
+void run_frames(GameBoy& gb, int first, int count, std::initializer_list<Press> presses = {},
+                std::vector<float>* sound = nullptr) {
     for (int frame = first; frame < first + count; ++frame) {
         for (const Press& press : presses) {
             if (frame == press.frame) {
@@ -52,6 +57,9 @@ void run_frames(GameBoy& gb, int first, int count, std::initializer_list<Press> 
             }
         }
         gb.run_frame();
+        if (sound != nullptr) {
+            gb.take_audio(*sound);
+        }
     }
 }
 
@@ -72,15 +80,21 @@ void expect_same_machine(const GameBoy& a, const GameBoy& b) {
 
 // Runs `n` frames, saves, runs `m` more frames and keeps the machine; loads
 // the state and runs the same `m` frames with the same input; both must end
-// identical. `presses` may fall before or after the save.
-void check_replay(const Bytes& rom, int n, int m, std::initializer_list<Press> presses) {
+// identical. `presses` may fall before or after the save. The sound of the
+// `m` frames must match too: the sound output is not in the state (it
+// belongs to the window), so it is switched on at the save on both sides,
+// the second being a fresh machine. That sound is left in `sound_out`.
+void check_replay(const Bytes& rom, int n, int m, std::initializer_list<Press> presses,
+                  std::vector<float>* sound_out = nullptr) {
     GameBoy gb;
     ASSERT_EQ(gb.load_rom(rom), "");
     run_frames(gb, 0, n, presses);
     const Bytes saved = gb.save_state();
     const std::size_t serial_at_save = gb.serial_output().size();
 
-    run_frames(gb, n, m, presses);
+    gb.set_audio_enabled(true);
+    std::vector<float> sound_first;
+    run_frames(gb, n, m, presses, &sound_first);
     const std::string serial_first = gb.serial_output().substr(serial_at_save);
     GameBoy first;  // the machine at the end of the first run, as a state
     ASSERT_EQ(first.load_rom(rom), "");
@@ -91,11 +105,34 @@ void check_replay(const Bytes& rom, int n, int m, std::initializer_list<Press> p
     run_frames(gb, n, m, presses);
     EXPECT_EQ(gb.serial_output().substr(serial_at_load), serial_first);
     expect_same_machine(gb, first);
+
+    GameBoy replay;
+    ASSERT_EQ(replay.load_rom(rom), "");
+    ASSERT_EQ(replay.load_state(saved), "");
+    replay.set_audio_enabled(true);
+    std::vector<float> sound_replay;
+    run_frames(replay, n, m, presses, &sound_replay);
+    EXPECT_EQ(sound_replay.size(), sound_first.size());
+    EXPECT_TRUE(sound_replay == sound_first) << "the sound differs";
+    expect_same_machine(replay, first);
+    if (sound_out != nullptr) {
+        *sound_out = std::move(sound_first);
+    }
 }
 
 TEST(SaveStateDeterminism, BlarggCpuInstrsContinuesIdentically) {
     const Bytes rom = rom_at(std::string(GB_CSP_DIR) + "/blargg/cpu_instrs/cpu_instrs.gb");
     check_replay(rom, 120, 300, {});
+}
+
+// Every channel is busy in dmg_sound, so a channel's counter left out of the
+// state would show in the sound after the load.
+TEST(SaveStateDeterminism, BlarggDmgSoundContinuesWithTheSameSound) {
+    const Bytes rom = rom_at(std::string(GB_CSP_DIR) + "/blargg/dmg_sound/dmg_sound.gb");
+    std::vector<float> sound;
+    check_replay(rom, 120, 300, {}, &sound);
+    EXPECT_TRUE(std::any_of(sound.begin(), sound.end(), [](float s) { return s != 0.0F; }))
+        << "the sound is silence";
 }
 
 TEST(SaveStateDeterminism, Rtc3TestWithInputContinuesIdentically) {

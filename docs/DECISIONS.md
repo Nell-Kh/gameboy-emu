@@ -262,7 +262,8 @@ record that supersedes the old one, not by editing history.
 
 - **Status:** Accepted in review (`docs/cartridge-notes.md`, section 7). Done: the format and its
   tests in the core (`core/state_io.h`, `core/save_state.cpp`), F5 / F8 and `game.state` in the
-  window (`app/state_file.h`).
+  window (`app/state_file.h`). Format version 2 since v0.5.0: the `APU ` section (M5); v0.4.0
+  states are refused with the reason, with no converter (`docs/apu-notes.md`, section 8).
 - **Decision:** A 48-byte header (8-byte magic, format version, ROM checksums and title, CRC-32 of
   the payload, reserved bytes that must be zero), then tagged sections written field by field,
   little-endian, never a `memcpy` of a struct. A file with another version, another ROM, a bad

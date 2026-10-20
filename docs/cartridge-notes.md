@@ -238,7 +238,7 @@ Header, 48 bytes:
 | Offset | Size | Field |
 |---|---|---|
 | 0 | 8 | magic, 8 ASCII bytes. `GBEMUSTA` for now; the final name is chosen with the product name, still 8 bytes |
-| 8 | 4 | format version, starting at 1 |
+| 8 | 4 | format version: 1 in v0.4.0, 2 since v0.5.0 (the `APU ` section) |
 | 12 | 1 | the ROM's header checksum (byte `0x014D`) |
 | 13 | 1 | zero |
 | 14 | 2 | the ROM's global checksum, as stored at `0x014E`-`0x014F` |
@@ -268,6 +268,7 @@ Then sections, each a 4-byte ASCII tag, a 32-bit length and the payload, in this
 | `SERL` | SB, SC (1 each); ticks left in the transfer (4) | 6 |
 | `DMA ` | the FF46 value (1); requested, starting, active: each a presence byte and its value (1+1, 1+1, 1+2) | 8 |
 | `JOYP` | select bits (1); pressed buttons (1) | 2 |
+| `APU ` | the sound registers `FF10-FF26` as stored (23); wave RAM (16); powered (1); the next frame-sequencer step (1); per channel, 1 to 4: on, length enabled (1 each), length counter (2), volume, envelope timer (1 each), period timer (4), waveform position (1); sweep shadow period (2), sweep timer (1), sweep enabled, sweep used negate (1 each); the noise shift register (2); the wave byte playing (1) and the ticks since it was fetched (4) | 97 |
 | `PPU ` | VRAM (8192); OAM (160); LCDC, STAT select bits, SCY, SCX, LYC, BGP, OBP0, OBP1, WY, WX (1 each); line, dot, mode-3 length (4 each); mode (1); first line, window Y reached (1 each); window line (4); LYC = LY, STAT line high (1 each); this line's objects (10) and their count (1); frames completed (8); the frame buffer (23040) | 31442 |
 | `CART` | mapper registers, then RAM, then for MBC3 + timer the clock (layouts below) | varies |
 
@@ -283,19 +284,23 @@ Then sections, each a 4-byte ASCII tag, a 32-bit length and the payload, in this
 A unit test checks every section's length against these tables.
 
 Left out on purpose: the serial output text (a test aid, not hardware), the per-line background
-index buffer (rebuilt at the start of every line), and the ROM itself.
+index buffer (rebuilt at the start of every line), the sound output (the sample being built, the
+high-pass filter's memory and the sample buffer belong to the window, which carries on with its
+own after a load), and the ROM itself.
 
-**Versioning.** Any change to any section's layout bumps the format version. M4 loads only its
-own version; converting old states can come later if it is ever needed.
+**Versioning.** Any change to any section's layout bumps the format version. A build loads only
+its own version; converting old states can come later if it is ever needed. Version 2 (v0.5.0)
+added the `APU ` section, so states from v0.4.0 are refused with the reason.
 
 **Determinism test.** Run a ROM for N frames and save a state; run M more frames and keep the
 frame and the CPU registers; load the state, run the same M frames with the same input, and
-require an identical frame, registers and tick count. Run with Libbet's demo and with a Blargg
+require an identical frame, registers, tick count and (since v0.5.0, with the sound output
+switched on at the save on both sides) sound samples. Run with Libbet's demo and with a Blargg
 ROM. A second test saves, loads into a fresh `GameBoy`, saves again, and requires the two files
 to be byte-identical. **As built:** Libbet is built by hand and is not in the CI test-ROM
 collection, so rtc3test played through its menu is the input-driven ROM (input, the clock and
-screen updates); Blargg's `cpu_instrs` is the other. Both tests also compare every byte of the
-two machines' states. A third test saves at 40 points between instructions in two Mooneye ROMs
+screen updates); Blargg's `cpu_instrs` is another, and Blargg's combined `dmg_sound`, with every
+sound channel busy, the third. The tests also compare every byte of the two machines' states. A third test saves at 40 points between instructions in two Mooneye ROMs
 that keep OAM DMA and the PPU busy, and requires a fresh `GameBoy` loaded from each state to run
 the next 3000 instructions identically.
 

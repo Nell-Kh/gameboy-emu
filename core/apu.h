@@ -7,6 +7,9 @@
 
 namespace core {
 
+class StateReader;
+class StateWriter;
+
 // The audio processing unit (docs/apu-notes.md): sound registers 0xFF10-0xFF26
 // and wave RAM 0xFF30-0xFF3F, the 512 Hz frame sequencer, and per channel the
 // on/off state, length counter, volume envelope, (channel 1) frequency sweep
@@ -66,6 +69,13 @@ public:
     [[nodiscard]] std::uint64_t dropped_samples() const noexcept {
         return dropped_samples_;
     }
+
+    // The `APU ` section of a save state (ADR-020; docs/apu-notes.md,
+    // section 8): the registers, wave RAM, the frame-sequencer step and every
+    // channel's counters and timers. Not the sound output (the sample being
+    // built, the filter's memory, the buffer), which belongs to the window.
+    void save_state(StateWriter& out) const;
+    void load_state(StateReader& in);
 
     // For tests and the mixer.
     [[nodiscard]] bool powered() const noexcept {

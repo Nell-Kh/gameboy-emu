@@ -13,6 +13,8 @@
 #include <utility>
 #include <vector>
 
+#include "core/state_io.h"
+
 namespace {
 
 using core::Apu;
@@ -821,6 +823,99 @@ TEST(ApuOutput, SamplesNobodyTakesAreDroppedAfterASecond) {
     std::vector<float> out;
     apu.take_samples(out);
     EXPECT_EQ(out.size(), 2U * Apu::kSampleRate);
+}
+
+// --- The APU section of a save state (docs/apu-notes.md, section 8) ---
+
+constexpr std::uint32_t kTicksPerSequencerStep = 8192;  // 512 Hz
+
+// Runs `ticks` clock ticks in steps of 4, clocking the frame sequencer every
+// 8192 ticks as the bus does; `since_step` carries the phase between calls.
+void run_with_sequencer(Apu& apu, std::uint32_t ticks, std::uint32_t& since_step) {
+    for (std::uint32_t t = 0; t < ticks; t += 4) {
+        apu.tick(4);
+        since_step += 4;
+        if (since_step == kTicksPerSequencerStep) {
+            apu.step_frame_sequencer();
+            since_step = 0;
+        }
+    }
+}
+
+// Every channel playing, with the sweep, envelopes and a length counter
+// running, then an odd stretch of time so that every counter is somewhere
+// in the middle. Returns the sequencer phase it ends at.
+std::uint32_t make_busy(Apu& apu) {
+    apu.write(kNr50, 0x53);
+    apu.write(kNr51, 0xB7);
+    apu.write(kNr10, 0x23);  // sweep: period 2, up, shift 3
+    apu.write(kNr11, 0x55);  // duty 1, length 21
+    apu.write(kNr12, 0xC5);  // volume 12, up, period 5
+    apu.write(kNr13, 0xE8);
+    apu.write(kNr14, kTrigger | kLengthEnable | 0x03);  // period 1000
+    apu.write(kNr21, 0xB0);                             // duty 2, length 48
+    apu.write(kNr22, 0x9A);                             // volume 9, down, period 2
+    apu.write(kNr23, 0xD2);
+    apu.write(kNr24, kTrigger | 0x04);  // period 1234
+    load_counting_wave(apu);
+    start_wave(apu, 1500, 2);
+    apu.write(kNr42, 0x7B);  // volume 7, up, period 3
+    apu.write(kNr43, 0x35);  // shift 3, 7-bit mode, divisor 5
+    apu.write(kNr44, kTrigger);
+    std::uint32_t since_step = 0;
+    run_with_sequencer(apu, 123'456, since_step);
+    return since_step;
+}
+
+std::vector<std::uint8_t> apu_section(const Apu& apu) {
+    core::StateWriter out;
+    out.begin_section("APU ");
+    apu.save_state(out);
+    out.end_section();
+    return out.data();
+}
+
+// The state goes into a machine in the boot state, which shares nothing
+// with it; from there both must give the same output, tick for tick, for
+// the next tenth of a second, through sweep, envelope and length clocks.
+TEST(ApuState, ALoadedStateContinuesWithTheSameOutput) {
+    constexpr std::uint32_t kCompareTicks = 400'000;
+    Apu apu = fresh_apu();
+    std::uint32_t since_step = make_busy(apu);
+    const std::vector<std::uint8_t> saved = apu_section(apu);
+    EXPECT_EQ(saved.size(), 8U + 97U);  // the documented section size
+
+    Apu loaded;
+    core::StateReader in(saved);
+    in.begin_section("APU ");
+    loaded.load_state(in);
+    in.end_section();
+    ASSERT_TRUE(in.ok()) << in.error();
+    EXPECT_EQ(apu_section(loaded), saved);
+
+    apu.set_output_enabled(true);
+    loaded.set_output_enabled(true);
+    std::uint32_t loaded_since_step = since_step;
+    for (std::uint32_t t = 0; t < kCompareTicks; t += 4) {
+        for (int channel = 0; channel < Apu::kChannels; ++channel) {
+            ASSERT_EQ(apu.output(channel), loaded.output(channel))
+                << "channel " << channel << " at tick " << t;
+        }
+        ASSERT_EQ(apu.read(kNr52), loaded.read(kNr52)) << "at tick " << t;
+        ASSERT_EQ(apu.read(kWave), loaded.read(kWave)) << "at tick " << t;
+        run_with_sequencer(apu, 4, since_step);
+        run_with_sequencer(loaded, 4, loaded_since_step);
+    }
+    for (std::uint16_t address = kNr10; address <= kNr52; ++address) {
+        EXPECT_EQ(apu.read(address), loaded.read(address)) << std::hex << address;
+    }
+    std::vector<float> sound;
+    std::vector<float> loaded_sound;
+    apu.take_samples(sound);
+    loaded.take_samples(loaded_sound);
+    const std::uint64_t samples = std::uint64_t{kCompareTicks} * Apu::kSampleRate / kTicksPerSecond;
+    EXPECT_EQ(sound.size(), 2 * samples);
+    EXPECT_EQ(sound, loaded_sound);
 }
 
 }  // namespace

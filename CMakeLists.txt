@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.24)
 
 project(peasoup
-  VERSION 0.5.0
+  VERSION 1.0.0
   DESCRIPTION "Game Boy (DMG) emulator in C++20"
   LANGUAGES CXX
 )

@@ -106,12 +106,12 @@ if(GB_FETCH_TEST_ROMS)
   # The command-line frontend, end to end: exit status 0 means the ROM passed.
   add_test(
     NAME App.HeadlessRunsATestRom
-    COMMAND gameboy-emu --headless "${gb_test_roms_SOURCE_DIR}/cpu_instrs/individual/06-ld r,r.gb"
+    COMMAND peasoup --headless "${gb_test_roms_SOURCE_DIR}/cpu_instrs/individual/06-ld r,r.gb"
   )
   # The same for a ROM that reports in cartridge RAM instead of over serial.
   add_test(
     NAME App.HeadlessReadsTheVerdictInCartridgeRam
-    COMMAND gameboy-emu --headless
+    COMMAND peasoup --headless
             "${csp_test_roms_SOURCE_DIR}/blargg/dmg_sound/rom_singles/01-registers.gb"
   )
   set_tests_properties(App.HeadlessReadsTheVerdictInCartridgeRam PROPERTIES
@@ -119,24 +119,24 @@ if(GB_FETCH_TEST_ROMS)
   )
 endif()
 
-add_test(NAME App.PrintsUsageWithoutArguments COMMAND gameboy-emu)
+add_test(NAME App.PrintsUsageWithoutArguments COMMAND peasoup)
 set_tests_properties(App.PrintsUsageWithoutArguments PROPERTIES
-  PASS_REGULAR_EXPRESSION "Usage: gameboy-emu"
+  PASS_REGULAR_EXPRESSION "Usage: peasoup"
 )
-add_test(NAME App.RejectsUnknownOptions COMMAND gameboy-emu --no-such-option)
+add_test(NAME App.RejectsUnknownOptions COMMAND peasoup --no-such-option)
 set_tests_properties(App.RejectsUnknownOptions PROPERTIES WILL_FAIL TRUE)
 
 # Window mode is never opened in CI. These stop at the arguments or the ROM
 # file, before SDL starts.
-add_test(NAME App.WindowModeReportsAMissingRom COMMAND gameboy-emu no-such-rom.gb)
+add_test(NAME App.WindowModeReportsAMissingRom COMMAND peasoup no-such-rom.gb)
 set_tests_properties(App.WindowModeReportsAMissingRom PROPERTIES
   PASS_REGULAR_EXPRESSION "cannot read no-such-rom.gb"
 )
-add_test(NAME App.TraceNeedsHeadless COMMAND gameboy-emu --trace no-such-rom.gb)
+add_test(NAME App.TraceNeedsHeadless COMMAND peasoup --trace no-such-rom.gb)
 set_tests_properties(App.TraceNeedsHeadless PROPERTIES
   PASS_REGULAR_EXPRESSION "need --headless"
 )
-add_test(NAME App.RejectsAScaleOutOfRange COMMAND gameboy-emu --scale 0 no-such-rom.gb)
+add_test(NAME App.RejectsAScaleOutOfRange COMMAND peasoup --scale 0 no-such-rom.gb)
 set_tests_properties(App.RejectsAScaleOutOfRange PROPERTIES
   PASS_REGULAR_EXPRESSION "--scale must be 1 to 16"
 )
@@ -152,7 +152,7 @@ if(GB_APP_SMOKE_TESTS)
     add_test(
       NAME AppSmoke.SaveIsWrittenOnSig${signal}
       COMMAND Python3::Interpreter ${CMAKE_CURRENT_SOURCE_DIR}/app_smoke.py
-              $<TARGET_FILE:gameboy-emu> ${signal}
+              $<TARGET_FILE:peasoup> ${signal}
     )
     set_tests_properties(AppSmoke.SaveIsWrittenOnSig${signal} PROPERTIES
       LABELS app_smoke

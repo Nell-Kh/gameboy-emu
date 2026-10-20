@@ -138,7 +138,7 @@ void queue_frame_sound(AudioOut& audio, const std::vector<float>& samples, std::
         return;
     }
     const std::uint64_t ms = (SDL_GetPerformanceCounter() - started) * 1000 / counts_per_second;
-    std::cerr << "gameboy-emu: audio: underrun at frame " << frames << " (" << ms
+    std::cerr << "peasoup: audio: underrun at frame " << frames << " (" << ms
               << " ms): " << stall_ms.value() << " ms since the frame before\n";
 }
 
@@ -289,14 +289,14 @@ int run_window(core::GameBoy& gb, const WindowOptions& options, BatterySaver* sa
     // terminal still writes the save file (ADR-019). SDL skips installing its
     // signal handlers when this hint is set; refuse to run without them.
     if (SDL_GetHintBoolean(SDL_HINT_NO_SIGNAL_HANDLERS, SDL_FALSE) == SDL_TRUE) {
-        std::cerr << "gameboy-emu: SDL_HINT_NO_SIGNAL_HANDLERS is set; the save file would not "
+        std::cerr << "peasoup: SDL_HINT_NO_SIGNAL_HANDLERS is set; the save file would not "
                      "be written on SIGINT or SIGTERM\n";
         return kExitSdlError;
     }
     SDL_SetMainReady();
     const SdlVideo video;
     if (!video.ok()) {
-        std::cerr << "gameboy-emu: cannot start SDL: " << SDL_GetError() << "\n";
+        std::cerr << "peasoup: cannot start SDL: " << SDL_GetError() << "\n";
         return kExitSdlError;
     }
     // SDL turns text input on by default on desktops. A game window has no
@@ -310,7 +310,7 @@ int run_window(core::GameBoy& gb, const WindowOptions& options, BatterySaver* sa
         SDL_CreateWindow(options.title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                          kWidth * options.scale, kHeight * options.scale, SDL_WINDOW_RESIZABLE));
     if (!window) {
-        std::cerr << "gameboy-emu: cannot open a window: " << SDL_GetError() << "\n";
+        std::cerr << "peasoup: cannot open a window: " << SDL_GetError() << "\n";
         return kExitSdlError;
     }
     // No vsync: the loop below paces itself to the Game Boy's rate, which is
@@ -318,7 +318,7 @@ int run_window(core::GameBoy& gb, const WindowOptions& options, BatterySaver* sa
     const std::unique_ptr<SDL_Renderer, SdlDeleter> renderer(
         SDL_CreateRenderer(window.get(), -1, 0));
     if (!renderer) {
-        std::cerr << "gameboy-emu: cannot create a renderer: " << SDL_GetError() << "\n";
+        std::cerr << "peasoup: cannot create a renderer: " << SDL_GetError() << "\n";
         return kExitSdlError;
     }
     // Draw at 160x144 and let SDL scale by whole multiples to fit the window.
@@ -327,7 +327,7 @@ int run_window(core::GameBoy& gb, const WindowOptions& options, BatterySaver* sa
     const std::unique_ptr<SDL_Texture, SdlDeleter> texture(SDL_CreateTexture(
         renderer.get(), SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, kWidth, kHeight));
     if (!texture) {
-        std::cerr << "gameboy-emu: cannot create a texture: " << SDL_GetError() << "\n";
+        std::cerr << "peasoup: cannot create a texture: " << SDL_GetError() << "\n";
         return kExitSdlError;
     }
 
@@ -335,7 +335,7 @@ int run_window(core::GameBoy& gb, const WindowOptions& options, BatterySaver* sa
     if (!options.mute) {
         audio.emplace();
         if (!audio->ok()) {
-            std::cerr << "gameboy-emu: no sound: cannot open an audio device: " << SDL_GetError()
+            std::cerr << "peasoup: no sound: cannot open an audio device: " << SDL_GetError()
                       << "\n";
             audio.reset();
         }
@@ -391,7 +391,7 @@ int run_window(core::GameBoy& gb, const WindowOptions& options, BatterySaver* sa
     if (audio) {
         // How well the pacing worked: 0 underruns is "no crackle" (ADR-025).
         const std::uint64_t seconds = (SDL_GetPerformanceCounter() - started) / counts_per_second;
-        std::cerr << "gameboy-emu: audio: " << audio->underruns() << " underruns in " << frames
+        std::cerr << "peasoup: audio: " << audio->underruns() << " underruns in " << frames
                   << " frames (" << seconds << " s)\n";
     }
     return kExitOk;

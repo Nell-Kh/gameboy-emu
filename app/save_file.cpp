@@ -157,7 +157,7 @@ BatterySaver::BatterySaver(core::GameBoy& gb, std::filesystem::path path, std::o
             break;
         case SaveRead::Status::WrongSize:
         case SaveRead::Status::Unreadable:
-            log_ << "gameboy-emu: " << read.message << "\n";
+            log_ << "peasoup: " << read.message << "\n";
             break;
     }
     gb_.clear_battery_ram_changed();
@@ -207,7 +207,7 @@ void BatterySaver::write() {
     }
     const std::string error = write_save(path_, gb_.battery_ram(), footer ? &*footer : nullptr);
     if (!error.empty()) {
-        log_ << "gameboy-emu: " << error << "\n";
+        log_ << "peasoup: " << error << "\n";
         return;  // still changed, so the next tick tries again
     }
     gb_.clear_battery_ram_changed();

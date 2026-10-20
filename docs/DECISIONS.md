@@ -17,7 +17,8 @@ record that supersedes the old one, not by editing history.
 - **Context:** The core must build and be tested without SDL, so that CI stays fast and the
   emulator logic never depends on a window.
 - **Decision:** One CMake project with three targets: `core` (static library, no dependencies),
-  `gameboy-emu` (the frontend executable, links `core`), `unit_tests` (GoogleTest, links `core`).
+  `gameboy-emu` (the frontend executable, links `core`; `peasoup` since ADR-026), `unit_tests`
+  (GoogleTest, links `core`).
   Ninja is the generator. Named configurations live in `CMakePresets.json` (`debug`, `asan`,
   `release`). GoogleTest is fetched by CMake at a pinned tag, not vendored.
 - **Consequences:** A build is `cmake --preset X && cmake --build --preset X`. The first configure
@@ -264,6 +265,7 @@ record that supersedes the old one, not by editing history.
   tests in the core (`core/state_io.h`, `core/save_state.cpp`), F5 / F8 and `game.state` in the
   window (`app/state_file.h`). Format version 2 since v0.5.0: the `APU ` section (M5); v0.4.0
   states are refused with the reason, with no converter (`docs/apu-notes.md`, section 8).
+  Version 3 since v1.0.0: the magic is `PEASOUPS` (ADR-026).
 - **Decision:** A 48-byte header (8-byte magic, format version, ROM checksums and title, CRC-32 of
   the payload, reserved bytes that must be zero), then tagged sections written field by field,
   little-endian, never a `memcpy` of a struct. A file with another version, another ROM, a bad
@@ -359,12 +361,28 @@ record that supersedes the old one, not by editing history.
   starts once 50 ms is queued, never on an empty queue. The loop counts underruns (the queue found
   empty after that), reports each one as it happens with its frame, its time and the length of
   the stall behind it, and prints the count, with the frame count and run time, on exit, so "no
-  crackle" is a number and each crackle can be traced to its cause. With `--mute`, with no audio device, and in the app-smoke CI job (which
-  passes `--mute`, so the save-on-signal timing does not depend on the dummy audio driver), the
-  wall-clock pacing of ADR-016 stays.
+  crackle" is a number and each crackle can be traced to its cause. With `--mute`, with no audio
+  device, and in the app-smoke CI job (which passes `--mute`, so the save-on-signal timing does
+  not depend on the dummy audio driver), the wall-clock pacing of ADR-016 stays.
 - **Consequences:** Sound and picture cannot drift apart, and a stall needs no catch-up logic:
   the queue just refills. The game runs at the sound card's rate, which is within a fraction of
   a percent of nominal on any real card. The M5 exit requires the counter at zero over five
   minutes of Libbet; the dummy driver in CI drains its queue at real time too, so the pacing
   also works there.
 
+## ADR-026: The product is called peasoup
+
+- **Status:** Accepted (M6 brief: pick a short, lowercase name not taken on GitHub; the repo
+  stays `gameboy-emu`).
+- **Context:** "gameboy-emu" is one of the most common repository names on GitHub and leads with
+  Nintendo's trademark; the planned "dotmatrix" is already the name of a Game Boy emulator
+  (`dot-matrix-rs`). No Game Boy emulator was found under "peasoup", the nickname of the original
+  screen's green.
+- **Decision:** The executable is `peasoup`, its messages start with `peasoup:`, and the window
+  title is "peasoup — " and the ROM header's title (the file name if the header has none). The
+  save-state magic becomes `PEASOUPS` (still 8 bytes) and the format version 3. A file with the
+  old magic `GBEMUSTA` is refused as coming from gameboy-emu 0.4.0 or 0.5.0, by its version,
+  with no converter. The repository, the CMake presets and the core library keep their names.
+- **Consequences:** Commands in the docs change (`./build/release/app/peasoup`). States saved
+  before v1.0.0 stop loading, with a message that says where they came from; battery saves
+  (`.sav`) are not affected.

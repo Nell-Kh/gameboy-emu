@@ -14,7 +14,7 @@ namespace core {
 
 // The header (docs/cartridge-notes.md, section 7):
 //
-//   0   8  magic "GBEMUSTA"
+//   0   8  magic "PEASOUPS"
 //   8   4  format version
 //   12  1  the ROM's header checksum (0x014D)
 //   13  1  zero
@@ -24,7 +24,9 @@ namespace core {
 //   36  12 reserved, zero
 namespace {
 
-constexpr std::string_view kMagic = "GBEMUSTA";
+constexpr std::string_view kMagic = "PEASOUPS";
+// The magic of format versions 1 and 2, before the rename (ADR-026).
+constexpr std::string_view kOldMagic = "GBEMUSTA";
 constexpr std::size_t kVersionAt = 8;
 constexpr std::size_t kHeaderChecksumAt = 12;
 constexpr std::size_t kZeroAt = 13;
@@ -84,6 +86,12 @@ std::vector<std::uint8_t> GameBoy::save_state() const {
 std::string GameBoy::load_state(std::span<const std::uint8_t> state) {
     if (state.size() < kStateHeaderSize) {
         return "the file is too short to be a save state";
+    }
+    if (std::equal(kOldMagic.begin(), kOldMagic.end(), state.begin())) {
+        return "the save state is from gameboy-emu " +
+               std::string(read_u32(state, kVersionAt) == 1 ? "0.4.0" : "0.5.0") +
+               " (format version " + std::to_string(read_u32(state, kVersionAt)) +
+               "); this build reads version " + std::to_string(kStateVersion);
     }
     if (!std::equal(kMagic.begin(), kMagic.end(), state.begin())) {
         return "the file is not a save state";

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """App smoke test: the window writes the save file when stopped by a signal.
 
-Runs gameboy-emu in window mode with SDL's dummy video and audio drivers (no
+Runs peasoup in window mode with SDL's dummy video and audio drivers (no
 real window), on a tiny ROM that writes a marker byte to its battery RAM, waits
 about 0.1 s, then fills all 8 KiB with a known pattern. Sends SIGTERM or SIGINT
 and checks that the app exits with status 0 and that game.sav holds exactly the

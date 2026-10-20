@@ -2,7 +2,9 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "test_rom.h"
@@ -32,6 +34,24 @@ TEST(GameBoy, StartsAtTheCartridgeEntryPointWithNoTimeElapsed) {
     EXPECT_EQ(gb.cpu().registers().pc, kEntry);
     EXPECT_EQ(gb.cycles(), 0U);
     EXPECT_EQ(gb.serial_output(), "");
+}
+
+// The window's title shows it (ADR-026). rtc3test's header, for example, is
+// "MBC3RTCTESTRTC3" and the colour flag 0x80.
+TEST(GameBoy, RomTitleStopsAtTheFirstByteThatIsNotPrintable) {
+    GameBoy gb;
+    EXPECT_EQ(gb.rom_title(), "");
+    std::vector<std::uint8_t> rom = ok_rom();
+    const std::string title = "MBC3RTCTESTRTC3";
+    std::copy(title.begin(), title.end(), rom.begin() + 0x0134);
+    rom[0x0143] = 0x80;
+    ASSERT_EQ(gb.load_rom(rom), "");
+    EXPECT_EQ(gb.rom_title(), "MBC3RTCTESTRTC3");
+
+    rom[0x0134 + 6] = 0x00;  // a shorter title padded with zeros
+    GameBoy shorter;
+    ASSERT_EQ(shorter.load_rom(rom), "");
+    EXPECT_EQ(shorter.rom_title(), "MBC3RT");
 }
 
 TEST(GameBoy, StepRunsOneInstructionOfTheLoadedRom) {

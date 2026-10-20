@@ -27,6 +27,16 @@ std::string GameBoy::load_rom(std::span<const std::uint8_t> rom) {
     return result.error;
 }
 
+std::string GameBoy::rom_title() const {
+    constexpr std::uint8_t kFirstPrintable = 0x20;
+    constexpr std::uint8_t kLastPrintable = 0x7E;
+    const auto& title = rom_identity_.title;
+    const auto* const end = std::find_if(title.begin(), title.end(), [](std::uint8_t c) {
+        return c < kFirstPrintable || c > kLastPrintable;
+    });
+    return {title.begin(), end};
+}
+
 void GameBoy::set_button(Joypad::Button button, bool pressed) noexcept {
     bus_.set_button(button, pressed);
 }

@@ -5,6 +5,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
@@ -154,7 +155,7 @@ TEST(SaveState, TheHeaderHoldsTheMagicVersionRomIdentityAndCrc) {
     const Bytes state = gb.save_state();
     ASSERT_GT(state.size(), GameBoy::kStateHeaderSize);
     const Bytes header(state.begin(), state.begin() + GameBoy::kStateHeaderSize);
-    Bytes expected = {'G', 'B', 'E', 'M', 'U', 'S', 'T', 'A', 2, 0, 0, 0, 0x5A, 0, 0x12, 0x34};
+    Bytes expected = {'P', 'E', 'A', 'S', 'O', 'U', 'P', 'S', 3, 0, 0, 0, 0x5A, 0, 0x12, 0x34};
     const std::string title = "STATETEST";
     expected.insert(expected.end(), title.begin(), title.end());
     expected.resize(32, 0);
@@ -290,14 +291,29 @@ TEST_F(Refused, AWrongMagic) {
     expect_refused(state, "the file is not a save state");
 }
 
-// A v0.4.0 state (version 1, no APU section) is refused with the reason;
-// there is no converter (docs/apu-notes.md, section 8).
 TEST_F(Refused, AnotherFormatVersion) {
     Bytes state = good_;
+    state[8] = 2;
+    expect_refused(state, "the save state is format version 2; this build reads version 3");
+    state[8] = 4;
+    expect_refused(state, "the save state is format version 4; this build reads version 3");
+}
+
+// States from v0.4.0 (version 1) and v0.5.0 (version 2) have the old magic;
+// they are refused with where they came from, and there is no converter
+// (docs/apu-notes.md, section 8; ADR-026).
+TEST_F(Refused, AStateFromBeforeTheRename) {
+    Bytes state = good_;
+    const std::string old_magic = "GBEMUSTA";
+    std::copy(old_magic.begin(), old_magic.end(), state.begin());
+    state[8] = 2;
+    expect_refused(state,
+                   "the save state is from gameboy-emu 0.5.0 (format version 2); this build "
+                   "reads version 3");
     state[8] = 1;
-    expect_refused(state, "the save state is format version 1; this build reads version 2");
-    state[8] = 3;
-    expect_refused(state, "the save state is format version 3; this build reads version 2");
+    expect_refused(state,
+                   "the save state is from gameboy-emu 0.4.0 (format version 1); this build "
+                   "reads version 3");
 }
 
 TEST_F(Refused, AStateForAnotherRom) {

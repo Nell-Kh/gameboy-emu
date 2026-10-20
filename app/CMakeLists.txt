@@ -10,11 +10,11 @@ add_library(frontend STATIC
 )
 target_link_libraries(frontend PUBLIC gb::core PRIVATE gb_warnings)
 
-add_executable(gameboy-emu
+add_executable(peasoup
   main.cpp
   sdl_frontend.cpp
 )
 
 # main() is our own; SDL must not replace it with SDL_main.
-target_compile_definitions(gameboy-emu PRIVATE SDL_MAIN_HANDLED)
-target_link_libraries(gameboy-emu PRIVATE frontend gb::core SDL2::SDL2 gb_warnings)
+target_compile_definitions(peasoup PRIVATE SDL_MAIN_HANDLED)
+target_link_libraries(peasoup PRIVATE frontend gb::core SDL2::SDL2 gb_warnings)

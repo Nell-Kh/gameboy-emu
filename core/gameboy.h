@@ -30,6 +30,8 @@ public:
         std::uint64_t{Ppu::kLinesPerFrame} * Ppu::kTicksPerLine;
 
     [[nodiscard]] static std::string_view version() noexcept;
+    // The program's name (ADR-026).
+    static constexpr std::string_view kProductName = "peasoup";
 
     GameBoy() = default;
     // The CPU keeps a reference to the bus, so the pair cannot be copied or moved.
@@ -59,6 +61,11 @@ public:
 
     // Total clock ticks since power-on.
     [[nodiscard]] std::uint64_t cycles() const noexcept;
+
+    // The title in the loaded ROM's header (0x0134-0x0143), up to its first
+    // byte that is not printable ASCII: later cartridges keep a colour flag
+    // (0x80 or 0xC0) in the last byte. Empty before a ROM is loaded.
+    [[nodiscard]] std::string rom_title() const;
 
     // Presses or releases a button. A frontend calls this as input arrives.
     void set_button(Joypad::Button button, bool pressed) noexcept;
@@ -103,7 +110,8 @@ public:
     // Save states (ADR-020; docs/cartridge-notes.md, section 7): the whole
     // machine as a file's bytes, a 48-byte header and then the sections.
     static constexpr std::size_t kStateHeaderSize = 48;
-    static constexpr std::uint32_t kStateVersion = 2;  // 2: the APU section (v0.5.0)
+    // 2: the APU section (v0.5.0). 3: the magic is PEASOUPS (v1.0.0, ADR-026).
+    static constexpr std::uint32_t kStateVersion = 3;
     [[nodiscard]] std::vector<std::uint8_t> save_state() const;
     // Loads a state made by save_state() for the same ROM. Returns an empty
     // string, or the reason the file was refused; a refused file leaves the

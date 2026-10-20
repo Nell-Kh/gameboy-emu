@@ -47,7 +47,7 @@ otherwise, is stored in this repository. The tests read PNG screenshots with
 ## Play a game
 
 ```
-./build/release/app/gameboy-emu path/to/game.gb
+./build/release/app/peasoup path/to/game.gb
 ```
 
 | Game Boy | Keyboard |
@@ -72,7 +72,7 @@ many there were on exit: 0 means no crackle. Bring your own ROM: none is include
 ## Run a test ROM
 
 ```
-./build/asan/app/gameboy-emu --headless path/to/rom.gb
+./build/asan/app/peasoup --headless path/to/rom.gb
 ```
 
 It prints what the ROM sends over the serial port and exits with 0 if that includes "Passed".

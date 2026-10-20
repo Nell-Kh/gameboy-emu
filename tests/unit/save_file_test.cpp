@@ -33,7 +33,7 @@ protected:
     void SetUp() override {
         const auto* info = testing::UnitTest::GetInstance()->current_test_info();
         dir_ = fs::temp_directory_path() /
-               (std::string("gameboy-emu-") + info->test_suite_name() + "-" + info->name());
+               (std::string("peasoup-") + info->test_suite_name() + "-" + info->name());
         fs::remove_all(dir_);
         fs::create_directories(dir_);
     }

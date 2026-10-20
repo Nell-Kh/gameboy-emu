@@ -237,8 +237,8 @@ Header, 48 bytes:
 
 | Offset | Size | Field |
 |---|---|---|
-| 0 | 8 | magic, 8 ASCII bytes. `GBEMUSTA` for now; the final name is chosen with the product name, still 8 bytes |
-| 8 | 4 | format version: 1 in v0.4.0, 2 since v0.5.0 (the `APU ` section) |
+| 0 | 8 | magic, 8 ASCII bytes: `PEASOUPS` since v1.0.0 (ADR-026); `GBEMUSTA` before |
+| 8 | 4 | format version: 1 in v0.4.0, 2 in v0.5.0 (the `APU ` section), 3 since v1.0.0 (the magic) |
 | 12 | 1 | the ROM's header checksum (byte `0x014D`) |
 | 13 | 1 | zero |
 | 14 | 2 | the ROM's global checksum, as stored at `0x014E`-`0x014F` |
@@ -290,7 +290,9 @@ own after a load), and the ROM itself.
 
 **Versioning.** Any change to any section's layout bumps the format version. A build loads only
 its own version; converting old states can come later if it is ever needed. Version 2 (v0.5.0)
-added the `APU ` section, so states from v0.4.0 are refused with the reason.
+added the `APU ` section, so states from v0.4.0 are refused with the reason. Version 3 (v1.0.0)
+changed the magic with the product name (ADR-026); a file with the old magic is refused as coming
+from gameboy-emu 0.4.0 or 0.5.0.
 
 **Determinism test.** Run a ROM for N frames and save a state; run M more frames and keep the
 frame and the CPU registers; load the state, run the same M frames with the same input, and

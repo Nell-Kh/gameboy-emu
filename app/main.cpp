@@ -1,4 +1,4 @@
-// gameboy-emu: command-line frontend.
+// peasoup: command-line frontend.
 //
 // Two modes. By default the ROM runs in an SDL window (sdl_frontend.cpp).
 // With --headless it runs with no display and reports what it printed over the
@@ -53,10 +53,10 @@ struct Options {
 };
 
 void print_usage(std::ostream& out) {
-    out << "gameboy-emu " << core::GameBoy::version() << "\n"
+    out << "peasoup " << core::GameBoy::version() << "\n"
         << "\n"
-        << "Usage: gameboy-emu ROM [--scale N] [--mute]\n"
-        << "       gameboy-emu --headless ROM [--max-seconds N] [--trace]\n"
+        << "Usage: peasoup ROM [--scale N] [--mute]\n"
+        << "       peasoup --headless ROM [--max-seconds N] [--trace]\n"
         << "\n"
         << "  ROM              play ROM in a window\n"
         << "  --scale N        window size as a multiple of 160x144 (default " << kDefaultScale
@@ -95,12 +95,12 @@ std::optional<std::uint64_t> option_value(std::span<const std::string_view> args
                                           std::ostream& err) {
     const std::string_view option = args[i];
     if (i + 1 >= args.size()) {
-        err << "gameboy-emu: " << option << " needs a number\n";
+        err << "peasoup: " << option << " needs a number\n";
         return std::nullopt;
     }
     const auto value = parse_number(args[++i]);
     if (!value) {
-        err << "gameboy-emu: not a number: " << args[i] << "\n";
+        err << "peasoup: not a number: " << args[i] << "\n";
     }
     return value;
 }
@@ -109,15 +109,15 @@ std::optional<std::uint64_t> option_value(std::span<const std::string_view> args
 // reason in `err`, if they do not.
 bool options_fit(const Options& options, std::ostream& err) {
     if (!options.headless && options.headless_only_option) {
-        err << "gameboy-emu: --max-seconds and --trace need --headless\n";
+        err << "peasoup: --max-seconds and --trace need --headless\n";
         return false;
     }
     if (options.headless && (options.scale_given || options.mute)) {
-        err << "gameboy-emu: --scale and --mute have no effect with --headless\n";
+        err << "peasoup: --scale and --mute have no effect with --headless\n";
         return false;
     }
     if (options.rom_path.empty()) {
-        err << "gameboy-emu: no ROM given\n";
+        err << "peasoup: no ROM given\n";
         return false;
     }
     return true;
@@ -141,7 +141,7 @@ std::optional<Options> parse_arguments(std::span<const std::string_view> args, s
                 return std::nullopt;
             }
             if (*scale < 1 || *scale > kMaxScale) {
-                err << "gameboy-emu: --scale must be 1 to " << kMaxScale << "\n";
+                err << "peasoup: --scale must be 1 to " << kMaxScale << "\n";
                 return std::nullopt;
             }
             options.scale = static_cast<int>(*scale);
@@ -154,12 +154,12 @@ std::optional<Options> parse_arguments(std::span<const std::string_view> args, s
             options.max_seconds = *seconds;
             options.headless_only_option = true;
         } else if (arg.starts_with("--")) {
-            err << "gameboy-emu: unknown option " << arg << "\n";
+            err << "peasoup: unknown option " << arg << "\n";
             return std::nullopt;
         } else if (options.rom_path.empty()) {
             options.rom_path = arg;
         } else {
-            err << "gameboy-emu: more than one ROM given\n";
+            err << "peasoup: more than one ROM given\n";
             return std::nullopt;
         }
     }
@@ -223,11 +223,11 @@ std::string trace_line(const core::GameBoy& gb) {
 std::optional<int> load(core::GameBoy& gb, const std::string& path) {
     const auto rom = read_file(path);
     if (!rom) {
-        std::cerr << "gameboy-emu: cannot read " << path << "\n";
+        std::cerr << "peasoup: cannot read " << path << "\n";
         return kExitNoInput;
     }
     if (const std::string error = gb.load_rom(*rom); !error.empty()) {
-        std::cerr << "gameboy-emu: cannot run " << path << ": " << error << "\n";
+        std::cerr << "peasoup: cannot run " << path << ": " << error << "\n";
         return kExitBadRom;
     }
     return std::nullopt;
@@ -295,12 +295,22 @@ int run_headless(core::GameBoy& gb, const Options& options) {
         std::cerr << serial << '\n';
     }
     if (verdict == kExitNoVerdict) {
-        std::cerr << "\ngameboy-emu: no verdict after " << gb.cycles() << " ticks"
+        std::cerr << "\npeasoup: no verdict after " << gb.cycles() << " ticks"
                   << (gb.cpu().locked() ? " (CPU locked on an undefined opcode)" : "") << "\n";
     } else if (!reported_in_ram && (serial.empty() || serial.back() != '\n')) {
         std::cout << '\n';
     }
     return verdict;
+}
+
+// "peasoup — TITLE", from the ROM header, or the file name when the header
+// has no title.
+std::string window_title(const core::GameBoy& gb, const std::string& rom_path) {
+    std::string name = gb.rom_title();
+    if (name.empty()) {
+        name = std::filesystem::path(rom_path).filename().string();
+    }
+    return std::string(core::GameBoy::kProductName) + " \u2014 " + name;
 }
 
 }  // namespace
@@ -317,7 +327,7 @@ int main(int argc, char** argv) {
     }
     const auto options = parse_arguments(args, std::cerr);
     if (!options) {
-        std::cerr << "Try gameboy-emu --help\n";
+        std::cerr << "Try peasoup --help\n";
         return kExitUsage;
     }
     core::GameBoy gb;
@@ -329,10 +339,9 @@ int main(int argc, char** argv) {
     }
     // Battery saves live next to the ROM; headless runs never touch them.
     frontend::BatterySaver saver(gb, frontend::save_path_for(options->rom_path), std::cerr);
-    const std::string name = std::filesystem::path(options->rom_path).filename().string();
     const int status =
         frontend::run_window(gb,
-                             {.title = name + " - gameboy-emu",
+                             {.title = window_title(gb, options->rom_path),
                               .scale = options->scale,
                               .state_path = frontend::state_path_for(options->rom_path),
                               .mute = options->mute},

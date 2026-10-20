@@ -25,7 +25,7 @@ protected:
     void SetUp() override {
         const auto* info = testing::UnitTest::GetInstance()->current_test_info();
         dir_ = fs::temp_directory_path() /
-               (std::string("gameboy-emu-") + info->test_suite_name() + "-" + info->name());
+               (std::string("peasoup-") + info->test_suite_name() + "-" + info->name());
         fs::remove_all(dir_);
         fs::create_directories(dir_);
         ASSERT_EQ(gb_.load_rom(rom()), "");
@@ -67,7 +67,7 @@ TEST_F(StateFile, SaveWritesTheStateAndLeavesNoTemporaryFile) {
     ASSERT_TRUE(slot.save());
     EXPECT_EQ(read_file(path()), gb_.save_state());
     EXPECT_FALSE(fs::exists(fs::path(path()) += ".tmp"));
-    EXPECT_EQ(log_.str(), "gameboy-emu: state saved to " + path().string() + "\n");
+    EXPECT_EQ(log_.str(), "peasoup: state saved to " + path().string() + "\n");
 }
 
 TEST_F(StateFile, LoadPutsTheMachineBack) {
@@ -87,8 +87,7 @@ TEST_F(StateFile, LoadWithNoFileSaysSoAndChangesNothing) {
     StateSlot slot(gb_, path(), log_);
     EXPECT_FALSE(slot.load());
     EXPECT_EQ(gb_.save_state(), before);
-    EXPECT_EQ(log_.str(),
-              "gameboy-emu: no saved state at " + path().string() + " (F5 saves one)\n");
+    EXPECT_EQ(log_.str(), "peasoup: no saved state at " + path().string() + " (F5 saves one)\n");
 }
 
 TEST_F(StateFile, ARefusedFileIsReportedAndChangesNothing) {
@@ -102,7 +101,7 @@ TEST_F(StateFile, ARefusedFileIsReportedAndChangesNothing) {
     EXPECT_FALSE(slot.load());
     EXPECT_EQ(gb_.save_state(), before);
     EXPECT_EQ(log_.str(),
-              "gameboy-emu: " + path().string() + " not loaded: the file is not a save state\n");
+              "peasoup: " + path().string() + " not loaded: the file is not a save state\n");
 }
 
 TEST_F(StateFile, SaveReportsAFileThatCannotBeWritten) {

@@ -84,7 +84,7 @@ jobs:
         run: cmake --preset debug -DGB_APP_SMOKE_TESTS=ON -DGB_FETCH_TEST_ROMS=OFF
 
       - name: Build the app
-        run: cmake --build --preset debug --target gameboy-emu
+        run: cmake --build --preset debug --target peasoup
 
       - name: Smoke tests
         run: ctest --preset debug -L app_smoke
